@@ -2,6 +2,9 @@
 
 Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The homelab server runs the FastAPI backend and React frontend as separate Docker containers in one Compose project. The Raspberry Pi only opens the dashboard URL in Chromium kiosk mode.
 
+<img width="1270" height="360" alt="image" src="https://github.com/user-attachments/assets/ca66d608-d94c-4d7a-a10e-d76822393365" />
+
+
 ## Run With Docker
 
 ```bash
