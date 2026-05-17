@@ -7,11 +7,7 @@ name = "sidecar-deck-agent"
 version = "0.1.0"
 description = "Windows PC metrics agent for Sidecar Deck."
 requires-python = ">=3.11"
-dependencies = [
-  "psutil==6.1.1",
-  "requests==2.32.3",
-  "python-dotenv==1.0.1",
-]
+dynamic = ["dependencies"]
 
 [project.scripts]
 sidecar-deck-agent = "pc_agent:main"
@@ -21,3 +17,6 @@ sidecar-deck-agentw = "pc_agent:main"
 
 [tool.setuptools]
 py-modules = ["pc_agent"]
+
+[tool.setuptools.dynamic]
+dependencies = { file = ["requirements.txt"] }
