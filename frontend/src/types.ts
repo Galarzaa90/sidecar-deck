@@ -9,6 +9,14 @@ export interface MemoryMetrics {
   usagePercent?: number | null;
   usedBytes?: number | null;
   totalBytes?: number | null;
+  topProcesses?: ProcessMemoryMetrics[] | null;
+}
+
+export interface ProcessMemoryMetrics {
+  name: string;
+  pid: number;
+  rssBytes: number;
+  usagePercent?: number | null;
 }
 
 export interface GpuMetrics {

@@ -87,6 +87,32 @@ def disk_usage_percent() -> float | None:
         return None
 
 
+def top_memory_processes(total_memory: int, limit: int = 3) -> list[dict[str, Any]]:
+    processes: list[dict[str, Any]] = []
+    for process in psutil.process_iter(["pid", "name", "memory_info"]):
+        try:
+            info = process.info
+            memory_info = info.get("memory_info")
+            rss_bytes = getattr(memory_info, "rss", 0)
+            if rss_bytes <= 0:
+                continue
+
+            name = info.get("name") or f"pid {info.get('pid')}"
+            processes.append(
+                {
+                    "name": str(name)[:128],
+                    "pid": int(info["pid"]),
+                    "rssBytes": int(rss_bytes),
+                    "usagePercent": round((rss_bytes / total_memory) * 100, 1) if total_memory > 0 else None,
+                }
+            )
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
+            continue
+
+    processes.sort(key=lambda item: item["rssBytes"], reverse=True)
+    return processes[:limit]
+
+
 def nvidia_gpu_metrics() -> dict[str, Any] | None:
     creationflags = 0
     if os.name == "nt":
@@ -143,6 +169,7 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
             "usagePercent": memory.percent,
             "usedBytes": memory.used,
             "totalBytes": memory.total,
+            "topProcesses": top_memory_processes(memory.total),
         },
         "network": network,
         "disk": {

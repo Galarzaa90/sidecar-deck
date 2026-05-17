@@ -25,7 +25,12 @@ def test_post_accepts_valid_payload() -> None:
             "host": "pc",
             "timestamp": "2026-05-15T19:30:00Z",
             "cpu": {"usagePercent": 42.5, "temperatureC": 61.2},
-            "memory": {"usagePercent": 68.1, "usedBytes": 1024, "totalBytes": 2048},
+            "memory": {
+                "usagePercent": 68.1,
+                "usedBytes": 1024,
+                "totalBytes": 2048,
+                "topProcesses": [{"name": "browser.exe", "pid": 100, "rssBytes": 512, "usagePercent": 25.0}],
+            },
         },
     )
 
@@ -33,6 +38,7 @@ def test_post_accepts_valid_payload() -> None:
     body = response.json()
     assert body["latest"]["host"] == "pc"
     assert body["latest"]["cpu"]["usagePercent"] == 42.5
+    assert body["latest"]["memory"]["topProcesses"][0]["name"] == "browser.exe"
 
 
 def test_post_rejects_invalid_payload() -> None:

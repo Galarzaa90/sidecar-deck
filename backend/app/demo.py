@@ -50,6 +50,11 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
             usagePercent=round(memory, 1),
             usedBytes=ram_used,
             totalBytes=ram_total,
+            topProcesses=[
+                {"name": "chrome.exe", "pid": 8424, "rssBytes": int(ram_total * 0.092), "usagePercent": 9.2},
+                {"name": "Code.exe", "pid": 10112, "rssBytes": int(ram_total * 0.061), "usagePercent": 6.1},
+                {"name": "python.exe", "pid": 4020, "rssBytes": int(ram_total * 0.034), "usagePercent": 3.4},
+            ],
         ),
         gpu=GpuMetrics(
             name="Demo GeForce RTX 4070",

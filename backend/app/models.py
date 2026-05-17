@@ -31,6 +31,14 @@ class MemoryMetrics(FlexibleModel):
     usagePercent: float | None = Field(default=None, ge=0, le=100)
     usedBytes: int | None = Field(default=None, ge=0)
     totalBytes: int | None = Field(default=None, ge=0)
+    topProcesses: list["ProcessMemoryMetrics"] | None = None
+
+
+class ProcessMemoryMetrics(FlexibleModel):
+    name: str = Field(min_length=1, max_length=128)
+    pid: int = Field(ge=0)
+    rssBytes: int = Field(ge=0)
+    usagePercent: float | None = Field(default=None, ge=0, le=100)
 
 
 class GpuMetrics(FlexibleModel):

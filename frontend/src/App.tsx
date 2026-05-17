@@ -1,7 +1,7 @@
 import { Activity, Cpu, Gauge, MemoryStick, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { age, clock, gbPair, number1, percent, throughput } from './format';
+import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
 import { Sparkline } from './Sparkline';
 import type { MetricPayload, StatusEnvelope } from './types';
 
@@ -58,6 +58,15 @@ function series(history: MetricPayload[], selector: (item: MetricPayload) => num
 function maxTemp(metric?: MetricPayload | null): number | null {
   const values = [metric?.cpu?.temperatureC, metric?.gpu?.temperatureC].filter((item): item is number => typeof item === 'number');
   return values.length ? Math.max(...values) : null;
+}
+
+function processLabel(name: string): string {
+  return name.replace(/\.exe$/i, '');
+}
+
+function processShare(processBytes: number, topBytes: number): number {
+  if (!topBytes) return 0;
+  return Math.max(8, Math.min(100, (processBytes / topBytes) * 100));
 }
 
 function StatCard({
@@ -147,8 +156,29 @@ export default function App() {
           sub={gbPair(latest?.memory?.usedBytes, latest?.memory?.totalBytes)}
           sparkValues={ramSeries}
         >
-          <span>Used {latest?.memory?.usedBytes ? gbPair(latest.memory.usedBytes, latest.memory.totalBytes) : '--'}</span>
-          <span>Available {latest?.memory?.totalBytes && latest?.memory?.usedBytes ? gbPair(latest.memory.totalBytes - latest.memory.usedBytes, latest.memory.totalBytes) : '--'}</span>
+          <div className="ram-processes">
+            {(latest?.memory?.topProcesses ?? []).length > 0 ? (
+              latest?.memory?.topProcesses?.slice(0, 3).map((process, index, processes) => {
+                const topBytes = processes[0]?.rssBytes ?? 0;
+                return (
+                  <div className="ram-process" key={`${process.pid}-${process.name}`}>
+                    <span className="process-rank">{index + 1}</span>
+                    <div className="process-main">
+                      <div className="process-row">
+                        <span className="process-name">{processLabel(process.name)}</span>
+                        <span className="process-memory">{bytes(process.rssBytes)}</span>
+                      </div>
+                      <div className="process-track">
+                        <i style={{ width: `${processShare(process.rssBytes, topBytes)}%` }} />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })
+            ) : (
+              <span className="empty-detail">Top processes unavailable</span>
+            )}
+          </div>
         </StatCard>
 
         <StatCard
