@@ -252,6 +252,45 @@ body {
   background: linear-gradient(180deg, var(--tone), rgba(255, 255, 255, 0.16));
 }
 
+.gpu-graphic {
+  width: 100%;
+  height: 176px;
+  flex: 0 0 176px;
+  display: grid;
+  grid-template-rows: 54px auto 54px;
+  gap: 12px;
+}
+
+.gpu-graphic .sparkline {
+  height: 54px;
+  flex-basis: 54px;
+}
+
+.gpu-vram-line {
+  min-width: 0;
+  display: grid;
+  gap: 5px;
+}
+
+.gpu-vram-label {
+  color: var(--tone);
+  font-size: 15px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+.gpu-vram-value {
+  color: #fff;
+  font-size: 32px;
+  font-weight: 850;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .status-pill {
   color: #fff;
   background: color-mix(in srgb, var(--tone) 20%, rgba(255, 255, 255, 0.055)) !important;

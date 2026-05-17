@@ -96,6 +96,11 @@ function diskUsedShare(usedBytes?: number | null, freeBytes?: number | null, tot
   return 0;
 }
 
+function vramPair(used?: number | null, total?: number | null): string {
+  if (used == null || total == null || total === 0) return '--';
+  return `${(used / 1024 ** 3).toFixed(1)}/${(total / 1024 ** 3).toFixed(0)} GB`;
+}
+
 function uptime(seconds?: number | null): string {
   if (seconds == null) return '--';
   const days = Math.floor(seconds / 86400);
@@ -123,6 +128,7 @@ function StatCard({
   sub,
   sparkValues,
   sparkMax = 100,
+  graphic,
   children,
 }: {
   tone: string;
@@ -133,7 +139,8 @@ function StatCard({
   sub: string;
   sparkValues: Array<number | null | undefined>;
   sparkMax?: number;
-  children: ReactNode;
+  graphic?: ReactNode;
+  children?: ReactNode;
 }) {
   return (
     <section className="card" style={{ '--tone': tone } as CSSProperties}>
@@ -148,9 +155,37 @@ function StatCard({
         <span className="metric-value">{value}</span>
         {unit ? <span className="metric-unit">{unit}</span> : null}
       </div>
-      <Sparkline values={sparkValues} color={tone} max={sparkMax} />
-      <div className="details">{children}</div>
+      {graphic ?? <Sparkline values={sparkValues} color={tone} max={sparkMax} />}
+      {children ? <div className="details">{children}</div> : null}
     </section>
+  );
+}
+
+function metricShare(value?: number | null, max?: number | null): number {
+  if (value == null || max == null || max <= 0) return 0;
+  return Math.max(0, Math.min(100, (value / max) * 100));
+}
+
+function GpuGraphic({
+  usageValues,
+  memoryUsedBytes,
+  memoryTotalBytes,
+  memoryValues,
+}: {
+  usageValues: Array<number | null | undefined>;
+  memoryUsedBytes?: number | null;
+  memoryTotalBytes?: number | null;
+  memoryValues: Array<number | null | undefined>;
+}) {
+  return (
+    <div className="gpu-graphic">
+      <Sparkline values={usageValues} color="#35df87" />
+      <div className="gpu-vram-line">
+        <span className="gpu-vram-label">VRAM</span>
+        <span className="gpu-vram-value">{vramPair(memoryUsedBytes, memoryTotalBytes)}</span>
+      </div>
+      <Sparkline values={memoryValues} color="#35df87" />
+    </div>
   );
 }
 
@@ -208,6 +243,10 @@ export default function App() {
   const cpuSeries = useMemo(() => series(history, (item) => item.cpu?.usagePercent), [history]);
   const ramSeries = useMemo(() => series(history, (item) => item.memory?.usagePercent), [history]);
   const gpuSeries = useMemo(() => series(history, (item) => item.gpu?.usagePercent), [history]);
+  const gpuMemorySeries = useMemo(
+    () => series(history, (item) => metricShare(item.gpu?.memoryUsedBytes, item.gpu?.memoryTotalBytes)),
+    [history],
+  );
   const networkDownSeries = useMemo(() => series(history, (item) => (item.network?.rxBytesPerSecond ?? 0) / 1024 / 1024), [history]);
   const networkUpSeries = useMemo(() => series(history, (item) => (item.network?.txBytesPerSecond ?? 0) / 1024 / 1024), [history]);
   const perCore = latest?.cpu?.perCoreUsagePercent ?? [];
@@ -407,9 +446,15 @@ export default function App() {
           value={percent(latest?.gpu?.usagePercent)}
           sub={latest?.gpu?.name ?? 'GPU unavailable'}
           sparkValues={gpuSeries}
-        >
-          <span>VRAM {gbPair(latest?.gpu?.memoryUsedBytes, latest?.gpu?.memoryTotalBytes)}</span>
-        </StatCard>
+          graphic={
+            <GpuGraphic
+              usageValues={gpuSeries}
+              memoryUsedBytes={latest?.gpu?.memoryUsedBytes}
+              memoryTotalBytes={latest?.gpu?.memoryTotalBytes}
+              memoryValues={gpuMemorySeries}
+            />
+          }
+        />
 
         <div className="compact-grid">
           {compactPanels.map((panel) => (
