@@ -1,6 +1,6 @@
 # Sidecar Deck
 
-Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The homelab server runs the FastAPI backend and serves the built React frontend. The Raspberry Pi only opens the dashboard URL in Chromium kiosk mode.
+Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The homelab server runs the FastAPI backend and React frontend as separate Docker containers in one Compose project. The Raspberry Pi only opens the dashboard URL in Chromium kiosk mode.
 
 ## Run With Docker
 
@@ -16,6 +16,13 @@ http://homelab.local:8080
 ```
 
 The app runs in demo mode by default, so the dashboard shows changing fake metrics before a real PC agent is connected.
+
+The standalone frontend image serves the built Vite app through nginx and proxies same-origin API/WebSocket traffic to the backend. In Compose, it reaches the backend at `http://backend:8080`:
+
+```bash
+docker build -t sidecar-deck-frontend -f frontend/Dockerfile .
+docker run --rm -p 8081:8080 -e BACKEND_URL=http://host.docker.internal:8080 sidecar-deck-frontend
+```
 
 ## API
 
