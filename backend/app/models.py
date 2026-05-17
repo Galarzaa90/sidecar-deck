@@ -57,8 +57,21 @@ class NetworkMetrics(FlexibleModel):
 
 class DiskMetrics(FlexibleModel):
     usagePercent: float | None = Field(default=None, ge=0, le=100)
+    usedBytes: int | None = Field(default=None, ge=0)
+    freeBytes: int | None = Field(default=None, ge=0)
+    totalBytes: int | None = Field(default=None, ge=0)
+    volumes: list["DiskVolumeMetrics"] | None = None
     readBytesPerSecond: int | None = Field(default=None, ge=0)
     writeBytesPerSecond: int | None = Field(default=None, ge=0)
+
+
+class DiskVolumeMetrics(FlexibleModel):
+    name: str = Field(min_length=1, max_length=32)
+    mountpoint: str = Field(min_length=1, max_length=256)
+    usagePercent: float | None = Field(default=None, ge=0, le=100)
+    usedBytes: int | None = Field(default=None, ge=0)
+    freeBytes: int | None = Field(default=None, ge=0)
+    totalBytes: int | None = Field(default=None, ge=0)
 
 
 class PeripheralBatteryMetrics(FlexibleModel):

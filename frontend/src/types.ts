@@ -35,8 +35,21 @@ export interface NetworkMetrics {
 
 export interface DiskMetrics {
   usagePercent?: number | null;
+  usedBytes?: number | null;
+  freeBytes?: number | null;
+  totalBytes?: number | null;
+  volumes?: DiskVolumeMetrics[] | null;
   readBytesPerSecond?: number | null;
   writeBytesPerSecond?: number | null;
+}
+
+export interface DiskVolumeMetrics {
+  name: string;
+  mountpoint: string;
+  usagePercent?: number | null;
+  usedBytes?: number | null;
+  freeBytes?: number | null;
+  totalBytes?: number | null;
 }
 
 export interface PeripheralBatteryMetrics {

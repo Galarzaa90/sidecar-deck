@@ -261,11 +261,39 @@ def windows_cpu_name() -> str | None:
     return name or None
 
 
-def disk_usage_percent() -> float | None:
+def disk_usage_metrics() -> dict[str, Any]:
+    volumes: list[dict[str, Any]] = []
+    for partition in psutil.disk_partitions(all=False):
+        if os.name == "nt" and "fixed" not in partition.opts.lower():
+            continue
+        try:
+            volume_usage = psutil.disk_usage(partition.mountpoint)
+        except OSError:
+            continue
+
+        label = partition.mountpoint.rstrip("\\/") or partition.mountpoint
+        volumes.append(
+            {
+                "name": label,
+                "mountpoint": partition.mountpoint,
+                "usagePercent": float(volume_usage.percent),
+                "usedBytes": int(volume_usage.used),
+                "freeBytes": int(volume_usage.free),
+                "totalBytes": int(volume_usage.total),
+            }
+        )
+
     try:
-        return float(psutil.disk_usage(os.getenv("DISK_PATH", "C:\\" if os.name == "nt" else "/")).percent)
+        usage = psutil.disk_usage(os.getenv("DISK_PATH", "C:\\" if os.name == "nt" else "/"))
     except OSError:
-        return None
+        return {"volumes": volumes}
+    return {
+        "usagePercent": float(usage.percent),
+        "usedBytes": int(usage.used),
+        "freeBytes": int(usage.free),
+        "totalBytes": int(usage.total),
+        "volumes": volumes,
+    }
 
 
 def top_memory_processes(total_memory: int, limit: int = 3) -> list[dict[str, Any]]:
@@ -466,7 +494,7 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     network, disk_rates = tracker.sample()
     cpu_temp = first_temperature()
     cpu_clock = cpu_clock_mhz()
-    disk_percent = disk_usage_percent()
+    disk_metrics = disk_usage_metrics()
 
     payload: dict[str, Any] = {
         "host": HOSTNAME,
@@ -484,7 +512,7 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
         },
         "network": network,
         "disk": {
-            "usagePercent": disk_percent,
+            **disk_metrics,
             **disk_rates,
         },
         "uptimeSeconds": max(0, time.time() - psutil.boot_time()),

@@ -76,6 +76,12 @@ function processShare(processBytes: number, topBytes: number): number {
   return Math.max(8, Math.min(100, (processBytes / topBytes) * 100));
 }
 
+function diskFreeShare(freeBytes?: number | null, totalBytes?: number | null, usagePercent?: number | null): number {
+  if (freeBytes != null && totalBytes) return (freeBytes / totalBytes) * 100;
+  if (usagePercent != null) return 100 - usagePercent;
+  return 0;
+}
+
 function uptime(seconds?: number | null): string {
   if (seconds == null) return '--';
   const days = Math.floor(seconds / 86400);
@@ -191,13 +197,17 @@ export default function App() {
   const gpuSeries = useMemo(() => series(history, (item) => item.gpu?.usagePercent), [history]);
   const networkDownSeries = useMemo(() => series(history, (item) => (item.network?.rxBytesPerSecond ?? 0) / 1024 / 1024), [history]);
   const networkUpSeries = useMemo(() => series(history, (item) => (item.network?.txBytesPerSecond ?? 0) / 1024 / 1024), [history]);
-  const diskSeries = useMemo(() => series(history, (item) => item.disk?.usagePercent), [history]);
   const perCore = latest?.cpu?.perCoreUsagePercent ?? [];
   const batteries = latest?.peripheralBatteries ?? [];
   const lowestBattery = batteries.length
     ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent)[0]
     : null;
   const batteryList = batteries.length ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent).slice(0, 4) : [];
+  const diskVolumes = latest?.disk?.volumes?.length
+    ? latest.disk.volumes
+    : latest?.disk
+      ? [{ name: 'Free', mountpoint: 'disk', usagePercent: latest.disk.usagePercent, freeBytes: latest.disk.freeBytes, totalBytes: latest.disk.totalBytes }]
+      : [];
   const compactPanels = visibleCompactPanels(
     [
       {
@@ -209,7 +219,7 @@ export default function App() {
             icon={<Thermometer size={22} />}
             label="Thermals"
             value={number1(maxTemp(latest), 'C')}
-            sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'high temperature' : 'thermal headroom'}
+            sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'High Temperature' : 'Thermal Headroom'}
             sparkValues={tempSeries}
           >
             <span>CPU {number1(latest?.cpu?.temperatureC, 'C')}</span>
@@ -225,12 +235,17 @@ export default function App() {
             tone="#f4d35e"
             icon={<HardDrive size={22} />}
             label="Disk"
-            value={percent(latest?.disk?.usagePercent)}
-            sub="storage activity"
-            sparkValues={diskSeries}
+            sub="Storage"
           >
-            <span>Read {throughput(latest?.disk?.readBytesPerSecond)}</span>
-            <span>Write {throughput(latest?.disk?.writeBytesPerSecond)}</span>
+            <RankedMeterList
+              items={diskVolumes.slice(0, 4).map((volume) => ({
+                id: volume.mountpoint,
+                label: volume.name,
+                value: `${bytes(volume.freeBytes)} left`,
+                percent: diskFreeShare(volume.freeBytes, volume.totalBytes, volume.usagePercent),
+              }))}
+              showRank={false}
+            />
           </CompactCard>
         ),
       },

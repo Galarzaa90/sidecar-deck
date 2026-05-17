@@ -5,7 +5,7 @@ import math
 import random
 from datetime import datetime, timezone
 
-from .models import CpuMetrics, DiskMetrics, GpuMetrics, MemoryMetrics, MetricPayload, NetworkMetrics, PeripheralBatteryMetrics
+from .models import CpuMetrics, DiskMetrics, DiskVolumeMetrics, GpuMetrics, MemoryMetrics, MetricPayload, NetworkMetrics, PeripheralBatteryMetrics
 from .state import MetricsState
 
 
@@ -32,6 +32,8 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
     gpu_mem_used = int(gpu_mem_total * min(0.95, max(0.08, (gpu / 100) * 0.78 + 0.12)))
     ram_total = 32 * 1024**3
     ram_used = int(ram_total * memory / 100)
+    disk_total = 2 * 1024**4
+    disk_used = int(disk_total * 0.72)
     per_core = [
         min(100, max(1, cpu + rng.uniform(-24, 24) + math.sin((tick + idx) / 3) * 10))
         for idx in range(12)
@@ -70,6 +72,14 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
         ),
         disk=DiskMetrics(
             usagePercent=72.0,
+            usedBytes=disk_used,
+            freeBytes=disk_total - disk_used,
+            totalBytes=disk_total,
+            volumes=[
+                DiskVolumeMetrics(name="C:", mountpoint="C:\\", usagePercent=72.0, usedBytes=disk_used, freeBytes=disk_total - disk_used, totalBytes=disk_total),
+                DiskVolumeMetrics(name="D:", mountpoint="D:\\", usagePercent=91.0, usedBytes=int(disk_total * 0.91), freeBytes=int(disk_total * 0.09), totalBytes=disk_total),
+                DiskVolumeMetrics(name="E:", mountpoint="E:\\", usagePercent=8.0, usedBytes=int(disk_total * 0.08), freeBytes=int(disk_total * 0.92), totalBytes=disk_total),
+            ],
             readBytesPerSecond=int(_wave(tick, 7, 0, 2_000_000, phase=2)),
             writeBytesPerSecond=int(_wave(tick, 6.5, 0, 900_000, phase=1)),
         ),
