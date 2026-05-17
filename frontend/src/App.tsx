@@ -76,9 +76,10 @@ function processShare(processBytes: number, topBytes: number): number {
   return Math.max(8, Math.min(100, (processBytes / topBytes) * 100));
 }
 
-function diskFreeShare(freeBytes?: number | null, totalBytes?: number | null, usagePercent?: number | null): number {
-  if (freeBytes != null && totalBytes) return (freeBytes / totalBytes) * 100;
-  if (usagePercent != null) return 100 - usagePercent;
+function diskUsedShare(usedBytes?: number | null, freeBytes?: number | null, totalBytes?: number | null, usagePercent?: number | null): number {
+  if (usedBytes != null && totalBytes) return (usedBytes / totalBytes) * 100;
+  if (freeBytes != null && totalBytes) return 100 - (freeBytes / totalBytes) * 100;
+  if (usagePercent != null) return usagePercent;
   return 0;
 }
 
@@ -206,7 +207,14 @@ export default function App() {
   const diskVolumes = latest?.disk?.volumes?.length
     ? latest.disk.volumes
     : latest?.disk
-      ? [{ name: 'Free', mountpoint: 'disk', usagePercent: latest.disk.usagePercent, freeBytes: latest.disk.freeBytes, totalBytes: latest.disk.totalBytes }]
+      ? [{
+        name: 'Free',
+        mountpoint: 'disk',
+        usagePercent: latest.disk.usagePercent,
+        usedBytes: latest.disk.usedBytes,
+        freeBytes: latest.disk.freeBytes,
+        totalBytes: latest.disk.totalBytes,
+      }]
       : [];
   const compactPanels = visibleCompactPanels(
     [
@@ -242,7 +250,7 @@ export default function App() {
                 id: volume.mountpoint,
                 label: volume.name,
                 value: `${bytes(volume.freeBytes)} left`,
-                percent: diskFreeShare(volume.freeBytes, volume.totalBytes, volume.usagePercent),
+                percent: diskUsedShare(volume.usedBytes, volume.freeBytes, volume.totalBytes, volume.usagePercent),
               }))}
               showRank={false}
             />
