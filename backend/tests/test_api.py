@@ -31,6 +31,7 @@ def test_post_accepts_valid_payload() -> None:
                 "totalBytes": 2048,
                 "topProcesses": [{"name": "browser.exe", "pid": 100, "rssBytes": 512, "usagePercent": 25.0}],
             },
+            "peripheralBatteries": [{"id": "keyboard", "name": "G915 X", "batteryPercent": 45, "charging": False}],
         },
     )
 
@@ -39,6 +40,7 @@ def test_post_accepts_valid_payload() -> None:
     assert body["latest"]["host"] == "pc"
     assert body["latest"]["cpu"]["usagePercent"] == 42.5
     assert body["latest"]["memory"]["topProcesses"][0]["name"] == "browser.exe"
+    assert body["latest"]["peripheralBatteries"][0]["batteryPercent"] == 45
 
 
 def test_post_rejects_invalid_payload() -> None:

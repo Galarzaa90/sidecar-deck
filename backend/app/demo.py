@@ -5,7 +5,7 @@ import math
 import random
 from datetime import datetime, timezone
 
-from .models import CpuMetrics, DiskMetrics, GpuMetrics, MemoryMetrics, MetricPayload, NetworkMetrics
+from .models import CpuMetrics, DiskMetrics, GpuMetrics, MemoryMetrics, MetricPayload, NetworkMetrics, PeripheralBatteryMetrics
 from .state import MetricsState
 
 
@@ -73,5 +73,9 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
             readBytesPerSecond=int(_wave(tick, 7, 0, 2_000_000, phase=2)),
             writeBytesPerSecond=int(_wave(tick, 6.5, 0, 900_000, phase=1)),
         ),
+        peripheralBatteries=[
+            PeripheralBatteryMetrics(id="demo-keyboard", name="G915 X", batteryPercent=45, charging=False),
+            PeripheralBatteryMetrics(id="demo-headset", name="G733", batteryPercent=43, charging=True),
+        ],
         uptimeSeconds=86400 * 3 + tick,
     )

@@ -1,9 +1,16 @@
-import { Activity, Cpu, Gauge, HardDrive, MemoryStick, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, BatteryCharging, BatteryFull, Cpu, Gauge, HardDrive, MemoryStick, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
+import { RankedMeterList } from './RankedMeterList';
 import { Sparkline } from './Sparkline';
 import type { MetricPayload, StatusEnvelope } from './types';
+
+interface CompactPanel {
+  key: string;
+  priority: number;
+  content: ReactNode;
+}
 
 const emptyEnvelope: StatusEnvelope = {
   status: 'waiting',
@@ -79,6 +86,14 @@ function uptime(seconds?: number | null): string {
   return `${minutes}m`;
 }
 
+function visibleCompactPanels(panels: CompactPanel[], date: Date): CompactPanel[] {
+  const ordered = [...panels].sort((a, b) => a.priority - b.priority);
+  if (ordered.length <= 5) return ordered.slice(0, 4);
+
+  const start = Math.floor(date.getTime() / 8000) % ordered.length;
+  return Array.from({ length: 4 }, (_, index) => ordered[(start + index) % ordered.length]);
+}
+
 function StatCard({
   tone,
   icon,
@@ -132,7 +147,7 @@ function CompactCard({
   tone: string;
   icon: ReactNode;
   label: string;
-  value: string;
+    value?: string;
   sub: string;
   sparkValues?: Array<number | null | undefined>;
   sparkMax?: number;
@@ -147,10 +162,12 @@ function CompactCard({
           <p className="subtle">{sub}</p>
         </div>
       </div>
-      <div className="compact-main">
-        <span className="compact-value">{value}</span>
-        {sparkValues ? <Sparkline values={sparkValues} color={tone} max={sparkMax} /> : null}
-      </div>
+      {value || sparkValues ? (
+        <div className="compact-main">
+          {value ? <span className="compact-value">{value}</span> : null}
+          {sparkValues ? <Sparkline values={sparkValues} color={tone} max={sparkMax} /> : null}
+        </div>
+      ) : null}
       <div className="compact-details">{children}</div>
     </section>
   );
@@ -175,6 +192,112 @@ export default function App() {
   const networkSeries = useMemo(() => series(history, (item) => (item.network?.rxBytesPerSecond ?? 0) / 1024 / 1024), [history]);
   const diskSeries = useMemo(() => series(history, (item) => item.disk?.usagePercent), [history]);
   const perCore = latest?.cpu?.perCoreUsagePercent ?? [];
+  const batteries = latest?.peripheralBatteries ?? [];
+  const lowestBattery = batteries.length
+    ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent)[0]
+    : null;
+  const batteryList = batteries.length ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent).slice(0, 4) : [];
+  const compactPanels = visibleCompactPanels(
+    [
+      {
+        key: 'thermals',
+        priority: 10,
+        content: (
+          <CompactCard
+            tone="#ff8b3d"
+            icon={<Thermometer size={22} />}
+            label="Thermals"
+            value={number1(maxTemp(latest), 'C')}
+            sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'high temperature' : 'thermal headroom'}
+            sparkValues={tempSeries}
+          >
+            <span>CPU {number1(latest?.cpu?.temperatureC, 'C')}</span>
+            <span>GPU {number1(latest?.gpu?.temperatureC, 'C')}</span>
+          </CompactCard>
+        ),
+      },
+      {
+        key: 'disk',
+        priority: 20,
+        content: (
+          <CompactCard
+            tone="#f4d35e"
+            icon={<HardDrive size={22} />}
+            label="Disk"
+            value={percent(latest?.disk?.usagePercent)}
+            sub="storage activity"
+            sparkValues={diskSeries}
+          >
+            <span>Read {throughput(latest?.disk?.readBytesPerSecond)}</span>
+            <span>Write {throughput(latest?.disk?.writeBytesPerSecond)}</span>
+          </CompactCard>
+        ),
+      },
+      {
+        key: 'network',
+        priority: 30,
+        content: (
+          <CompactCard
+            tone="#d7dde7"
+            icon={<Network size={22} />}
+            label="Network"
+            value={throughput(latest?.network?.rxBytesPerSecond)}
+            sub="download rate"
+            sparkValues={networkSeries}
+            sparkMax={8}
+          >
+            <span>Up {throughput(latest?.network?.txBytesPerSecond)}</span>
+            <span>Last {age(envelope.ageSeconds)}</span>
+          </CompactCard>
+        ),
+      },
+      ...(lowestBattery
+        ? [
+          {
+            key: 'battery',
+            priority: 40,
+            content: (
+              <CompactCard
+                tone={lowestBattery.batteryPercent <= 20 ? '#ff6b6b' : '#35df87'}
+                icon={lowestBattery.charging ? <BatteryCharging size={22} /> : <BatteryFull size={22} />}
+                label="Battery"
+                sub="Connected Devices"
+              >
+                <RankedMeterList
+                  items={batteryList.map((battery) => ({
+                    id: battery.id,
+                    label: battery.name,
+                    value: `${percent(battery.batteryPercent)}${battery.charging ? ' +' : ''}`,
+                    percent: battery.batteryPercent,
+                  }))}
+                  showRank={false}
+                />
+              </CompactCard>
+            ),
+          },
+        ]
+        : []),
+      {
+        key: 'status',
+        priority: 50,
+        content: (
+          <CompactCard
+            tone="#78a6ff"
+            icon={connected ? <Wifi size={22} /> : <WifiOff size={22} />}
+            label="Status"
+            value={clock(now)}
+            sub={displayStatus.toUpperCase()}
+          >
+            <span>Uptime {uptime(latest?.uptimeSeconds)}</span>
+            <span className="status-pill">
+              <Activity size={14} /> {connected ? envelope.status : 'disconnected'}
+            </span>
+          </CompactCard>
+        ),
+      },
+    ],
+    now,
+  );
 
   return (
     <main className={`dashboard state-${displayStatus}`}>
@@ -205,23 +328,17 @@ export default function App() {
         >
           <div className="ram-processes">
             {(latest?.memory?.topProcesses ?? []).length > 0 ? (
-              latest?.memory?.topProcesses?.slice(0, 3).map((process, index, processes) => {
-                const topBytes = processes[0]?.rssBytes ?? 0;
-                return (
-                  <div className="ram-process" key={`${process.pid}-${process.name}`}>
-                    <span className="process-rank">{index + 1}</span>
-                    <div className="process-main">
-                      <div className="process-row">
-                        <span className="process-name">{processLabel(process.name)}</span>
-                        <span className="process-memory">{bytes(process.rssBytes)}</span>
-                      </div>
-                      <div className="process-track">
-                        <i style={{ width: `${processShare(process.rssBytes, topBytes)}%` }} />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })
+              <RankedMeterList
+                items={latest?.memory?.topProcesses?.slice(0, 3).map((process, _index, processes) => {
+                  const topBytes = processes[0]?.rssBytes ?? 0;
+                  return {
+                    id: `${process.pid}-${process.name}`,
+                    label: processLabel(process.name),
+                    value: bytes(process.rssBytes),
+                    percent: processShare(process.rssBytes, topBytes),
+                  };
+                }) ?? []}
+              />
             ) : (
               <span className="empty-detail">Top processes unavailable</span>
             )}
@@ -241,55 +358,11 @@ export default function App() {
         </StatCard>
 
         <div className="compact-grid">
-          <CompactCard
-            tone="#ff8b3d"
-            icon={<Thermometer size={22} />}
-            label="Thermals"
-            value={number1(maxTemp(latest), 'C')}
-            sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'high temperature' : 'thermal headroom'}
-            sparkValues={tempSeries}
-          >
-            <span>CPU {number1(latest?.cpu?.temperatureC, 'C')}</span>
-            <span>GPU {number1(latest?.gpu?.temperatureC, 'C')}</span>
-          </CompactCard>
-
-          <CompactCard
-            tone="#f4d35e"
-            icon={<HardDrive size={22} />}
-            label="Disk"
-            value={percent(latest?.disk?.usagePercent)}
-            sub="storage activity"
-            sparkValues={diskSeries}
-          >
-            <span>Read {throughput(latest?.disk?.readBytesPerSecond)}</span>
-            <span>Write {throughput(latest?.disk?.writeBytesPerSecond)}</span>
-          </CompactCard>
-
-          <CompactCard
-            tone="#d7dde7"
-            icon={<Network size={22} />}
-            label="Network"
-            value={throughput(latest?.network?.rxBytesPerSecond)}
-            sub="download rate"
-            sparkValues={networkSeries}
-            sparkMax={8}
-          >
-            <span>Up {throughput(latest?.network?.txBytesPerSecond)}</span>
-            <span>Last {age(envelope.ageSeconds)}</span>
-          </CompactCard>
-
-          <CompactCard
-            tone="#78a6ff"
-            icon={connected ? <Wifi size={22} /> : <WifiOff size={22} />}
-            label="Status"
-            value={clock(now)}
-            sub={displayStatus.toUpperCase()}
-          >
-            <span>Uptime {uptime(latest?.uptimeSeconds)}</span>
-            <span className="status-pill">
-              <Activity size={14} /> {connected ? envelope.status : 'disconnected'}
-            </span>
-          </CompactCard>
+          {compactPanels.map((panel) => (
+            <div className="compact-slot" key={panel.key}>
+              {panel.content}
+            </div>
+          ))}
         </div>
       </div>
     </main>

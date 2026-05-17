@@ -39,6 +39,13 @@ export interface DiskMetrics {
   writeBytesPerSecond?: number | null;
 }
 
+export interface PeripheralBatteryMetrics {
+  id: string;
+  name: string;
+  batteryPercent: number;
+  charging?: boolean | null;
+}
+
 export interface MetricPayload {
   host: string;
   timestamp?: string | null;
@@ -47,6 +54,7 @@ export interface MetricPayload {
   gpu?: GpuMetrics | null;
   network?: NetworkMetrics | null;
   disk?: DiskMetrics | null;
+  peripheralBatteries?: PeripheralBatteryMetrics[] | null;
   uptimeSeconds?: number | null;
 }
 

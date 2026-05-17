@@ -61,6 +61,13 @@ class DiskMetrics(FlexibleModel):
     writeBytesPerSecond: int | None = Field(default=None, ge=0)
 
 
+class PeripheralBatteryMetrics(FlexibleModel):
+    id: str = Field(min_length=1, max_length=128)
+    name: str = Field(min_length=1, max_length=96)
+    batteryPercent: float = Field(ge=0, le=100)
+    charging: bool = False
+
+
 class MetricPayload(FlexibleModel):
     host: str = Field(default="unknown", min_length=1, max_length=128)
     timestamp: datetime | None = None
@@ -69,6 +76,7 @@ class MetricPayload(FlexibleModel):
     gpu: GpuMetrics | None = None
     network: NetworkMetrics | None = None
     disk: DiskMetrics | None = None
+    peripheralBatteries: list[PeripheralBatteryMetrics] | None = None
     uptimeSeconds: float | None = Field(default=None, ge=0)
 
     @field_validator("timestamp", mode="before")

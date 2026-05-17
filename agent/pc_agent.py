@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 import logging
+import asyncio
 import json
 import os
 import platform
+import re
 import socket
 import subprocess
 import time
@@ -12,6 +14,7 @@ from typing import Any
 
 import psutil
 import requests
+import websockets
 from dotenv import load_dotenv
 
 
@@ -28,8 +31,14 @@ PUSH_INTERVAL_SECONDS = float(os.getenv("PUSH_INTERVAL_SECONDS", "1"))
 HOSTNAME = os.getenv("HOSTNAME") or socket.gethostname()
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 CPU_TEMPERATURE_POLL_SECONDS = float(os.getenv("CPU_TEMPERATURE_POLL_SECONDS", "10"))
+LOGITECH_BATTERY_POLL_SECONDS = float(os.getenv("LOGITECH_BATTERY_POLL_SECONDS", "30"))
+BLUETOOTH_BATTERY_POLL_SECONDS = float(os.getenv("BLUETOOTH_BATTERY_POLL_SECONDS", "60"))
 _cpu_temperature_checked_at = 0.0
 _cpu_temperature_cache: float | None = None
+_logitech_battery_checked_at = 0.0
+_logitech_battery_cache: list[dict[str, Any]] = []
+_bluetooth_battery_checked_at = 0.0
+_bluetooth_battery_cache: list[dict[str, Any]] = []
 
 
 def hidden_creation_flags() -> int:
@@ -320,6 +329,138 @@ def nvidia_gpu_metrics() -> dict[str, Any] | None:
         return None
 
 
+def logitech_battery_devices() -> list[dict[str, Any]]:
+    global _logitech_battery_cache, _logitech_battery_checked_at
+
+    now = time.monotonic()
+    if now - _logitech_battery_checked_at < LOGITECH_BATTERY_POLL_SECONDS:
+        return _logitech_battery_cache
+    _logitech_battery_checked_at = now
+
+    try:
+        _logitech_battery_cache = asyncio.run(fetch_logitech_battery_devices())
+    except Exception as exc:
+        logger.debug("logitech battery lookup failed: %s", exc)
+        _logitech_battery_cache = []
+    return _logitech_battery_cache
+
+
+def bluetooth_battery_devices() -> list[dict[str, Any]]:
+    global _bluetooth_battery_cache, _bluetooth_battery_checked_at
+
+    if os.name != "nt":
+        return []
+
+    now = time.monotonic()
+    if now - _bluetooth_battery_checked_at < BLUETOOTH_BATTERY_POLL_SECONDS:
+        return _bluetooth_battery_cache
+    _bluetooth_battery_checked_at = now
+
+    try:
+        _bluetooth_battery_cache = asyncio.run(fetch_bluetooth_battery_devices())
+    except Exception as exc:
+        logger.debug("bluetooth battery lookup failed: %s", exc)
+        _bluetooth_battery_cache = []
+    return _bluetooth_battery_cache
+
+
+async def fetch_logitech_battery_devices() -> list[dict[str, Any]]:
+    headers = {
+        "Origin": "file://",
+        "Pragma": "no-cache",
+        "Cache-Control": "no-cache",
+        "Sec-WebSocket-Extensions": "permessage-deflate; client_max_window_bits",
+        "Sec-WebSocket-Protocol": "json",
+    }
+    async with websockets.connect("ws://127.0.0.1:9010", additional_headers=headers, subprotocols=["json"]) as websocket:
+        await websocket.send(json.dumps({"msgId": "", "verb": "GET", "path": "/devices/list"}))
+        devices_message = await receive_logitech_message(websocket, "/devices/list")
+        devices = devices_message.get("payload", {}).get("deviceInfos", [])
+        battery_devices: list[dict[str, Any]] = []
+
+        for device in devices:
+            if not device.get("capabilities", {}).get("hasBatteryStatus"):
+                continue
+
+            device_id = str(device.get("id", ""))
+            if not device_id:
+                continue
+
+            path = f"/battery/{device_id}/state"
+            await websocket.send(json.dumps({"msgId": "", "verb": "GET", "path": path}))
+            battery_message = await receive_logitech_message(websocket, path)
+            payload = battery_message.get("payload", {})
+            percentage = payload.get("percentage")
+            try:
+                battery_percent = round(float(percentage))
+            except (TypeError, ValueError):
+                continue
+
+            battery_devices.append(
+                {
+                    "id": device_id,
+                    "name": str(device.get("displayName") or device.get("extendedDisplayName") or device_id)[:96],
+                    "batteryPercent": max(0, min(100, battery_percent)),
+                    "charging": bool(payload.get("charging")),
+                }
+            )
+
+        return battery_devices
+
+
+async def receive_logitech_message(websocket: Any, path: str) -> dict[str, Any]:
+    for _ in range(10):
+        message = json.loads(await asyncio.wait_for(websocket.recv(), timeout=2))
+        if message.get("path") == path:
+            return message
+    raise TimeoutError(f"logitech websocket did not return {path}")
+
+
+async def fetch_bluetooth_battery_devices() -> list[dict[str, Any]]:
+    from uuid import UUID
+
+    from winrt.windows.devices.bluetooth.genericattributeprofile import GattDeviceService
+    from winrt.windows.devices.enumeration import DeviceInformation
+    from winrt.windows.storage.streams import DataReader
+
+    battery_level_uuid = UUID("00002a19-0000-1000-8000-00805f9b34fb")
+    device_infos = await DeviceInformation.find_all_async()
+    devices: dict[str, dict[str, Any]] = {}
+
+    for device_info in device_infos:
+        device_id = str(device_info.id)
+        if "0000180f" not in device_id.lower():
+            continue
+
+        service = await GattDeviceService.from_id_async(device_id)
+        if service is None:
+            continue
+
+        result = await service.get_characteristics_for_uuid_async(battery_level_uuid)
+        for characteristic in result.characteristics:
+            value_result = await characteristic.read_value_async()
+            reader = DataReader.from_buffer(value_result.value)
+            if reader.unconsumed_buffer_length < 1:
+                continue
+
+            battery_percent = int(reader.read_byte())
+            address_match = re.search(r"_([0-9a-fA-F]{12})#", device_id)
+            address_candidates = [
+                item.lower()
+                for item in re.findall(r"(?<![0-9a-fA-F])([0-9a-fA-F]{12})(?![0-9a-fA-F])", device_id)
+                if item.lower() != "00805f9b34fb"
+            ]
+            stable_id = address_match.group(1).lower() if address_match else address_candidates[-1] if address_candidates else device_id
+            devices[stable_id] = {
+                "id": f"bluetooth-{stable_id}",
+                "name": str(device_info.name or "Bluetooth device")[:96],
+                "batteryPercent": max(0, min(100, battery_percent)),
+                "charging": False,
+            }
+
+    return list(devices.values())
+
+
 def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     memory = psutil.virtual_memory()
     network, disk_rates = tracker.sample()
@@ -357,6 +498,10 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     gpu = nvidia_gpu_metrics()
     if gpu is not None:
         payload["gpu"] = gpu
+
+    batteries = logitech_battery_devices() + bluetooth_battery_devices()
+    if batteries:
+        payload["peripheralBatteries"] = batteries
 
     return payload
 
