@@ -68,6 +68,17 @@ notepad .env
 python pc_agent.py
 ```
 
+Or install the agent directly from Git:
+
+```powershell
+mkdir C:\SidecarDeckAgent
+cd C:\SidecarDeckAgent
+py -m venv .venv
+.\.venv\Scripts\python.exe -m pip install "git+https://github.com/<owner>/pc-dashboard.git#subdirectory=agent"
+notepad .env
+.\.venv\Scripts\sidecar-deck-agent.exe
+```
+
 Required agent environment:
 
 ```env
@@ -76,6 +87,8 @@ METRICS_TOKEN=change-me
 PUSH_INTERVAL_SECONDS=1
 HOSTNAME=gaming-pc
 ```
+
+For background startup on Windows, see [docs/windows-agent-startup.md](docs/windows-agent-startup.md).
 
 ## Raspberry Pi Kiosk
 

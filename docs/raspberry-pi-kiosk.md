@@ -172,6 +172,7 @@ while true; do
     --noerrdialogs \
     --disable-infobars \
     --no-first-run \
+    --password-store=basic \
     --disable-session-crashed-bubble \
     --disable-features=TranslateUI \
     --enable-features=OverlayScrollbar \
@@ -323,6 +324,29 @@ The kiosk launch flags include `--disable-session-crashed-bubble`, but Chromium 
 ```bash
 pkill chromium || true
 mv ~/.config/chromium ~/.config/chromium.bak.$(date +%Y%m%d-%H%M%S)
+sudo reboot
+```
+
+### Chromium asks for a keyring password
+
+Chromium can show a keyring password dialog on first launch. For a kiosk device, launch Chromium with the basic password store so it does not try to unlock the desktop keyring.
+
+From SSH, add the flag to the kiosk script:
+
+```bash
+grep -q -- '--password-store=basic' ~/sidecar-deck-kiosk.sh || \
+  sed -i '/--no-first-run \\/a\    --password-store=basic \\' ~/sidecar-deck-kiosk.sh
+```
+
+Then restart Chromium:
+
+```bash
+pkill chromium || pkill chromium-browser || true
+```
+
+The launch loop will reopen Chromium after a few seconds. If the dialog is still visible, reboot:
+
+```bash
 sudo reboot
 ```
 
