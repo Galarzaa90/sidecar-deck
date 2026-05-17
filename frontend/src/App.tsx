@@ -1,4 +1,4 @@
-import { Activity, BatteryCharging, BatteryFull, Cpu, Gauge, HardDrive, MemoryStick, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, Cpu, Gauge, HardDrive, MemoryStick, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
@@ -189,7 +189,8 @@ export default function App() {
   const cpuSeries = useMemo(() => series(history, (item) => item.cpu?.usagePercent), [history]);
   const ramSeries = useMemo(() => series(history, (item) => item.memory?.usagePercent), [history]);
   const gpuSeries = useMemo(() => series(history, (item) => item.gpu?.usagePercent), [history]);
-  const networkSeries = useMemo(() => series(history, (item) => (item.network?.rxBytesPerSecond ?? 0) / 1024 / 1024), [history]);
+  const networkDownSeries = useMemo(() => series(history, (item) => (item.network?.rxBytesPerSecond ?? 0) / 1024 / 1024), [history]);
+  const networkUpSeries = useMemo(() => series(history, (item) => (item.network?.txBytesPerSecond ?? 0) / 1024 / 1024), [history]);
   const diskSeries = useMemo(() => series(history, (item) => item.disk?.usagePercent), [history]);
   const perCore = latest?.cpu?.perCoreUsagePercent ?? [];
   const batteries = latest?.peripheralBatteries ?? [];
@@ -241,13 +242,22 @@ export default function App() {
             tone="#d7dde7"
             icon={<Network size={22} />}
             label="Network"
-            value={throughput(latest?.network?.rxBytesPerSecond)}
-            sub="download rate"
-            sparkValues={networkSeries}
-            sparkMax={8}
+            sub="Throughput"
           >
-            <span>Up {throughput(latest?.network?.txBytesPerSecond)}</span>
-            <span>Last {age(envelope.ageSeconds)}</span>
+            <div className="network-meters">
+              <div className="network-meter">
+                <span className="network-rate">
+                  <ArrowUp size={15} /> {throughput(latest?.network?.txBytesPerSecond)}
+                </span>
+                <Sparkline values={networkUpSeries} color="#d7dde7" max={8} />
+              </div>
+              <div className="network-meter">
+                <span className="network-rate">
+                  <ArrowDown size={15} /> {throughput(latest?.network?.rxBytesPerSecond)}
+                </span>
+                <Sparkline values={networkDownSeries} color="#d7dde7" max={8} />
+              </div>
+            </div>
           </CompactCard>
         ),
       },

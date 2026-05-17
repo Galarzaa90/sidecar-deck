@@ -361,6 +361,35 @@ body {
   white-space: nowrap;
 }
 
+.network-meters {
+  width: 100%;
+  display: grid;
+  gap: 8px;
+}
+
+.network-meter {
+  min-width: 0;
+  display: grid;
+  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+}
+
+.network-rate {
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: #dfe6f2;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.network-meter .sparkline {
+  height: 38px;
+  flex-basis: 38px;
+}
+
 .state-stale .card,
 .state-stale .compact-card,
 .state-offline .card,
