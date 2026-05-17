@@ -5,7 +5,7 @@ import math
 import random
 from datetime import datetime, timezone
 
-from .models import CpuMetrics, DiskMetrics, DiskVolumeMetrics, GpuMetrics, MemoryMetrics, MetricPayload, NetworkMetrics, PeripheralBatteryMetrics
+from .models import CpuMetrics, DiskMetrics, DiskVolumeMetrics, GpuMetrics, MemoryMetrics, MetricPayload, NetworkMetrics, PeripheralBatteryMetrics, TemperatureMetrics
 from .state import MetricsState
 
 
@@ -30,6 +30,8 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
     memory = min(96, max(18, _wave(tick, 16, 52, 78, phase=0.6) + rng.uniform(-1.5, 1.5)))
     gpu_mem_total = 12 * 1024**3
     gpu_mem_used = int(gpu_mem_total * min(0.95, max(0.08, (gpu / 100) * 0.78 + 0.12)))
+    cpu_temp = round(38 + cpu * 0.42 + rng.uniform(-1.5, 1.5), 1)
+    gpu_temp = round(40 + gpu * 0.36 + rng.uniform(-1.2, 1.2), 1)
     ram_total = 32 * 1024**3
     ram_used = int(ram_total * memory / 100)
     disk_total = 2 * 1024**4
@@ -45,7 +47,7 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
         cpu=CpuMetrics(
             name="Demo Ryzen 5 5600X",
             usagePercent=round(cpu, 1),
-            temperatureC=round(38 + cpu * 0.42 + rng.uniform(-1.5, 1.5), 1),
+            temperatureC=cpu_temp,
             clockMhz=round(3600 + cpu * 9),
             perCoreUsagePercent=[round(value, 1) for value in per_core],
         ),
@@ -62,10 +64,15 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
         gpu=GpuMetrics(
             name="Demo GeForce RTX 4070",
             usagePercent=round(gpu, 1),
-            temperatureC=round(40 + gpu * 0.36 + rng.uniform(-1.2, 1.2), 1),
+            temperatureC=gpu_temp,
             memoryUsedBytes=gpu_mem_used,
             memoryTotalBytes=gpu_mem_total,
         ),
+        temperatures=[
+            TemperatureMetrics(id="cpu-package", label="CPU Package", temperatureC=cpu_temp),
+            TemperatureMetrics(id="cpu-ccd", label="CPU CCD", temperatureC=round(cpu_temp - 4 + rng.uniform(-0.8, 0.8), 1)),
+            TemperatureMetrics(id="gpu-core", label="GPU Core", temperatureC=gpu_temp),
+        ],
         network=NetworkMetrics(
             rxBytesPerSecond=int(_wave(tick, 4, 180_000, 4_800_000, phase=2.4)),
             txBytesPerSecond=int(_wave(tick, 4.8, 65_000, 1_250_000, phase=0.8)),

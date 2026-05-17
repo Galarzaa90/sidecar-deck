@@ -50,6 +50,12 @@ class GpuMetrics(FlexibleModel):
     memoryTotalBytes: int | None = Field(default=None, ge=0)
 
 
+class TemperatureMetrics(FlexibleModel):
+    id: str = Field(min_length=1, max_length=128)
+    label: str = Field(min_length=1, max_length=96)
+    temperatureC: float = Field(ge=0, le=130)
+
+
 class NetworkMetrics(FlexibleModel):
     rxBytesPerSecond: int | None = Field(default=None, ge=0)
     txBytesPerSecond: int | None = Field(default=None, ge=0)
@@ -87,6 +93,7 @@ class MetricPayload(FlexibleModel):
     cpu: CpuMetrics | None = None
     memory: MemoryMetrics | None = None
     gpu: GpuMetrics | None = None
+    temperatures: list[TemperatureMetrics] | None = None
     network: NetworkMetrics | None = None
     disk: DiskMetrics | None = None
     peripheralBatteries: list[PeripheralBatteryMetrics] | None = None

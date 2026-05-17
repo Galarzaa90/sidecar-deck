@@ -4,7 +4,7 @@ import type { CSSProperties, ReactNode } from 'react';
 import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
 import { RankedMeterList } from './RankedMeterList';
 import { Sparkline } from './Sparkline';
-import type { MetricPayload, StatusEnvelope } from './types';
+import type { MetricPayload, StatusEnvelope, TemperatureMetrics } from './types';
 
 interface CompactPanel {
   key: string;
@@ -63,8 +63,21 @@ function series(history: MetricPayload[], selector: (item: MetricPayload) => num
 }
 
 function maxTemp(metric?: MetricPayload | null): number | null {
-  const values = [metric?.cpu?.temperatureC, metric?.gpu?.temperatureC].filter((item): item is number => typeof item === 'number');
+  const values = temperatureItems(metric).map((item) => item.temperatureC);
   return values.length ? Math.max(...values) : null;
+}
+
+function temperatureItems(metric?: MetricPayload | null): TemperatureMetrics[] {
+  if (metric?.temperatures?.length) return metric.temperatures;
+
+  const fallback: TemperatureMetrics[] = [];
+  if (metric?.cpu?.temperatureC != null) {
+    fallback.push({ id: 'cpu', label: 'CPU', temperatureC: metric.cpu.temperatureC });
+  }
+  if (metric?.gpu?.temperatureC != null) {
+    fallback.push({ id: 'gpu', label: 'GPU', temperatureC: metric.gpu.temperatureC });
+  }
+  return fallback;
 }
 
 function processLabel(name: string): string {
@@ -192,7 +205,6 @@ export default function App() {
   const latest = envelope.latest;
   const displayStatus = connected ? envelope.status : 'disconnected';
   const history = envelope.history;
-  const tempSeries = useMemo(() => series(history, maxTemp), [history]);
   const cpuSeries = useMemo(() => series(history, (item) => item.cpu?.usagePercent), [history]);
   const ramSeries = useMemo(() => series(history, (item) => item.memory?.usagePercent), [history]);
   const gpuSeries = useMemo(() => series(history, (item) => item.gpu?.usagePercent), [history]);
@@ -204,6 +216,7 @@ export default function App() {
     ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent)[0]
     : null;
   const batteryList = batteries.length ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent).slice(0, 4) : [];
+  const thermals = temperatureItems(latest);
   const diskVolumes = latest?.disk?.volumes?.length
     ? latest.disk.volumes
     : latest?.disk
@@ -226,12 +239,21 @@ export default function App() {
             tone="#ff8b3d"
             icon={<Thermometer size={22} />}
             label="Thermals"
-            value={number1(maxTemp(latest), 'C')}
             sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'High Temperature' : 'Thermal Headroom'}
-            sparkValues={tempSeries}
           >
-            <span>CPU {number1(latest?.cpu?.temperatureC, 'C')}</span>
-            <span>GPU {number1(latest?.gpu?.temperatureC, 'C')}</span>
+            {thermals.length > 0 ? (
+              <RankedMeterList
+                items={thermals.map((sensor) => ({
+                  id: sensor.id,
+                  label: sensor.label,
+                  value: number1(sensor.temperatureC, 'C'),
+                  percent: sensor.temperatureC,
+                }))}
+                showRank={false}
+              />
+            ) : (
+              <span className="empty-detail">Temperature sensors unavailable</span>
+            )}
           </CompactCard>
         ),
       },
@@ -387,7 +409,6 @@ export default function App() {
           sparkValues={gpuSeries}
         >
           <span>VRAM {gbPair(latest?.gpu?.memoryUsedBytes, latest?.gpu?.memoryTotalBytes)}</span>
-          <span>Temp {number1(latest?.gpu?.temperatureC, 'C')}</span>
         </StatCard>
 
         <div className="compact-grid">

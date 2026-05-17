@@ -33,8 +33,8 @@ REQUEST_TIMEOUT_SECONDS = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 CPU_TEMPERATURE_POLL_SECONDS = float(os.getenv("CPU_TEMPERATURE_POLL_SECONDS", "10"))
 LOGITECH_BATTERY_POLL_SECONDS = float(os.getenv("LOGITECH_BATTERY_POLL_SECONDS", "30"))
 BLUETOOTH_BATTERY_POLL_SECONDS = float(os.getenv("BLUETOOTH_BATTERY_POLL_SECONDS", "60"))
-_cpu_temperature_checked_at = 0.0
-_cpu_temperature_cache: float | None = None
+_temperature_sensors_checked_at = 0.0
+_temperature_sensors_cache: list[dict[str, Any]] = []
 _logitech_battery_checked_at = 0.0
 _logitech_battery_cache: list[dict[str, Any]] = []
 _bluetooth_battery_checked_at = 0.0
@@ -84,76 +84,61 @@ class RateTracker:
         return network, disk_rates
 
 
-def first_temperature() -> float | None:
-    global _cpu_temperature_cache, _cpu_temperature_checked_at
+def temperature_sensors() -> list[dict[str, Any]]:
+    global _temperature_sensors_cache, _temperature_sensors_checked_at
 
     now = time.monotonic()
-    if now - _cpu_temperature_checked_at < CPU_TEMPERATURE_POLL_SECONDS:
-        return _cpu_temperature_cache
-    _cpu_temperature_checked_at = now
+    if now - _temperature_sensors_checked_at < CPU_TEMPERATURE_POLL_SECONDS:
+        return _temperature_sensors_cache
+    _temperature_sensors_checked_at = now
 
-    _cpu_temperature_cache = psutil_cpu_temperature() or windows_cpu_temperature()
-    return _cpu_temperature_cache
+    sensors = psutil_temperature_sensors()
+    if not sensors and os.name == "nt":
+        sensors = windows_temperature_sensors()
+    _temperature_sensors_cache = dedupe_temperature_sensors(sensors)
+    return _temperature_sensors_cache
 
 
-def psutil_cpu_temperature() -> float | None:
+def psutil_temperature_sensors() -> list[dict[str, Any]]:
     try:
         temps = psutil.sensors_temperatures(fahrenheit=False)
     except (AttributeError, OSError):
-        return None
+        return []
 
-    preferred_keys = ["coretemp", "k10temp", "cpu_thermal", "acpitz"]
-    cpu_terms = ("cpu", "package", "core", "tctl", "tdie", "ccd", "soc")
-    readings: list[tuple[int, float]] = []
-
-    for key in preferred_keys + [item for item in temps if item not in preferred_keys]:
-        for reading in temps.get(key, []):
+    sensors: list[dict[str, Any]] = []
+    for key, readings in temps.items():
+        for index, reading in enumerate(readings):
             current = getattr(reading, "current", None)
-            if current is None:
-                continue
-            try:
-                value = float(current)
-            except (TypeError, ValueError):
-                continue
-            if not 0 < value < 130:
-                continue
-
-            label = str(getattr(reading, "label", "") or "").lower()
-            key_name = key.lower()
-            sensor_name = f"{key_name} {label}".strip()
-            if not any(term in sensor_name for term in cpu_terms):
-                continue
-
-            key_rank = preferred_keys.index(key) if key in preferred_keys else len(preferred_keys)
-            term_rank = next((index for index, term in enumerate(cpu_terms) if term in sensor_name), len(cpu_terms))
-            readings.append((key_rank * 10 + term_rank, value))
-
-    if not readings:
-        return None
-    readings.sort(key=lambda item: item[0])
-    return readings[0][1]
+            sensor = make_temperature_sensor(
+                f"psutil-{key}-{index}",
+                str(getattr(reading, "label", "") or key),
+                current,
+            )
+            if sensor is not None:
+                sensors.append(sensor)
+    return sensors
 
 
-def windows_cpu_temperature() -> float | None:
-    if os.name != "nt":
-        return None
-
+def windows_temperature_sensors() -> list[dict[str, Any]]:
+    sensors: list[dict[str, Any]] = []
     for namespace in ("root\\LibreHardwareMonitor", "root\\OpenHardwareMonitor"):
-        value = hardware_monitor_temperature(namespace)
-        if value is not None:
-            return value
+        sensors = hardware_monitor_temperature_sensors(namespace)
+        if sensors:
+            return sensors
 
-    return acpi_thermal_zone_temperature()
+    acpi_value = acpi_thermal_zone_temperature()
+    if acpi_value is not None:
+        sensors.append({"id": "acpi-thermal-zone", "label": "ACPI Thermal Zone", "temperatureC": acpi_value})
+    return sensors
 
 
-def hardware_monitor_temperature(namespace: str) -> float | None:
+def hardware_monitor_temperature_sensors(namespace: str) -> list[dict[str, Any]]:
     command = (
         "$sensors = Get-CimInstance -Namespace '"
         + namespace
         + "' -ClassName Sensor -ErrorAction SilentlyContinue | "
-        + "Where-Object { $_.SensorType -eq 'Temperature' -and "
-        + "($_.Name -match 'CPU|Package|Tctl|Tdie|Core' -or $_.Identifier -match '/(amd|intel)cpu/') } | "
-        + "Select-Object Name,Value; $sensors | ConvertTo-Json -Compress"
+        + "Where-Object { $_.SensorType -eq 'Temperature' } | "
+        + "Select-Object Name,Identifier,Value; $sensors | ConvertTo-Json -Compress"
     )
     try:
         result = subprocess.run(
@@ -165,34 +150,59 @@ def hardware_monitor_temperature(namespace: str) -> float | None:
             timeout=2,
         )
     except (OSError, subprocess.TimeoutExpired):
-        return None
+        return []
 
     output = result.stdout.strip()
     if not output:
-        return None
+        return []
 
     try:
         data = json.loads(output)
     except json.JSONDecodeError:
-        return None
+        return []
 
-    sensors = data if isinstance(data, list) else [data]
-    preferred_names = ["package", "tctl", "tdie", "cpu"]
-    readings: list[tuple[int, float]] = []
-    for sensor in sensors:
+    sensors: list[dict[str, Any]] = []
+    for index, sensor in enumerate(data if isinstance(data, list) else [data]):
         try:
-            name = str(sensor.get("Name", "")).lower()
-            value = float(sensor["Value"])
-        except (AttributeError, KeyError, TypeError, ValueError):
+            sensor_id = str(sensor.get("Identifier") or f"{namespace}-{index}")
+            label = str(sensor.get("Name") or sensor_id)
+            value = sensor.get("Value")
+        except AttributeError:
             continue
-        if 0 < value < 130:
-            rank = next((index for index, item in enumerate(preferred_names) if item in name), len(preferred_names))
-            readings.append((rank, value))
+        normalized = make_temperature_sensor(sensor_id, label, value)
+        if normalized is not None:
+            sensors.append(normalized)
+    return sensors
 
-    if not readings:
+
+def make_temperature_sensor(sensor_id: str, label: str, value: Any) -> dict[str, Any] | None:
+    try:
+        temperature = round(float(value), 1)
+    except (TypeError, ValueError):
         return None
-    readings.sort(key=lambda item: item[0])
-    return readings[0][1]
+    if not 0 < temperature < 130:
+        return None
+
+    clean_id = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", sensor_id.strip().lower()).strip("-")[:128]
+    clean_label = label.strip()[:96] or clean_id
+    return {"id": clean_id or "temperature", "label": clean_label, "temperatureC": temperature}
+
+
+def is_cpu_temperature(sensor: dict[str, Any]) -> bool:
+    sensor_name = f"{sensor.get('id', '')} {sensor.get('label', '')}".lower()
+    return any(term in sensor_name for term in ("cpu", "package", "core", "tctl", "tdie", "ccd"))
+
+
+def dedupe_temperature_sensors(sensors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deduped: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for sensor in sensors:
+        sensor_id = str(sensor["id"])
+        if sensor_id in seen:
+            continue
+        seen.add(sensor_id)
+        deduped.append(sensor)
+    return deduped
 
 
 def acpi_thermal_zone_temperature() -> float | None:
@@ -492,7 +502,8 @@ async def fetch_bluetooth_battery_devices() -> list[dict[str, Any]]:
 def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     memory = psutil.virtual_memory()
     network, disk_rates = tracker.sample()
-    cpu_temp = first_temperature()
+    thermal_sensors = temperature_sensors()
+    cpu_temp = next((sensor["temperatureC"] for sensor in thermal_sensors if is_cpu_temperature(sensor)), None)
     cpu_clock = cpu_clock_mhz()
     disk_metrics = disk_usage_metrics()
 
@@ -526,6 +537,12 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     gpu = nvidia_gpu_metrics()
     if gpu is not None:
         payload["gpu"] = gpu
+        gpu_sensor = make_temperature_sensor("nvidia-gpu", "GPU Core", gpu.get("temperatureC"))
+        if gpu_sensor is not None:
+            thermal_sensors.append(gpu_sensor)
+
+    if thermal_sensors:
+        payload["temperatures"] = dedupe_temperature_sensors(thermal_sensors)
 
     batteries = logitech_battery_devices() + bluetooth_battery_devices()
     if batteries:

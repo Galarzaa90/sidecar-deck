@@ -28,6 +28,12 @@ export interface GpuMetrics {
   memoryTotalBytes?: number | null;
 }
 
+export interface TemperatureMetrics {
+  id: string;
+  label: string;
+  temperatureC: number;
+}
+
 export interface NetworkMetrics {
   rxBytesPerSecond?: number | null;
   txBytesPerSecond?: number | null;
@@ -65,6 +71,7 @@ export interface MetricPayload {
   cpu?: CpuMetrics | null;
   memory?: MemoryMetrics | null;
   gpu?: GpuMetrics | null;
+  temperatures?: TemperatureMetrics[] | null;
   network?: NetworkMetrics | null;
   disk?: DiskMetrics | null;
   peripheralBatteries?: PeripheralBatteryMetrics[] | null;
