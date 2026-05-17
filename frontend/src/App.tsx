@@ -404,7 +404,6 @@ export default function App() {
           sub={latest?.cpu?.name ?? latest?.host ?? 'waiting for metrics'}
           sparkValues={cpuSeries}
         >
-          {latest?.cpu?.temperatureC != null ? <span>Temp {number1(latest.cpu.temperatureC, 'C')}</span> : null}
           <div className="core-bars">
             {perCore.slice(0, 16).map((core, index) => (
               <i key={index} style={{ height: `${Math.max(8, core)}%` }} />

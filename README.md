@@ -44,7 +44,7 @@ curl -X POST http://localhost:8080/api/metrics \
   -d '{
     "host": "gaming-pc",
     "timestamp": "2026-05-15T19:30:00Z",
-    "cpu": {"usagePercent": 42.5, "temperatureC": 61.2},
+    "cpu": {"usagePercent": 42.5},
     "memory": {
       "usagePercent": 68.1,
       "usedBytes": 21904333209,
@@ -53,7 +53,11 @@ curl -X POST http://localhost:8080/api/metrics \
         {"name": "chrome.exe", "pid": 8424, "rssBytes": 3161092096, "usagePercent": 9.2}
       ]
     },
-    "gpu": {"name": "NVIDIA GeForce RTX 4070", "usagePercent": 76.4, "temperatureC": 67.8, "memoryUsedBytes": 8147483648, "memoryTotalBytes": 12884901888},
+    "gpu": {"name": "NVIDIA GeForce RTX 4070", "usagePercent": 76.4, "memoryUsedBytes": 8147483648, "memoryTotalBytes": 12884901888},
+    "temperatures": [
+      {"id": "cpu-package", "label": "CPU Package", "temperatureC": 61.2},
+      {"id": "gpu-core", "label": "GPU Core", "temperatureC": 67.8}
+    ],
     "network": {"rxBytesPerSecond": 1200000, "txBytesPerSecond": 350000}
   }'
 ```
@@ -66,7 +70,7 @@ ws://<server>:8080/ws
 
 ## Windows PC Agent
 
-The first agent is a Python host process so it can access local Windows metrics. It uses `psutil` for CPU, RAM, network, disk, uptime, and hostname. Temperature/GPU fields are optional and can be added through LibreHardwareMonitor, OpenHardwareMonitor, or vendor tooling without changing the backend API.
+The first agent is a Python host process so it can access local Windows metrics. It uses `psutil` for CPU, RAM, network, disk, uptime, and hostname. Temperature readings are reported through the top-level `temperatures` list, and GPU fields can be added through LibreHardwareMonitor, OpenHardwareMonitor, or vendor tooling without changing the backend API.
 
 ```powershell
 cd agent

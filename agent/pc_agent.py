@@ -93,8 +93,8 @@ def temperature_sensors() -> list[dict[str, Any]]:
     _temperature_sensors_checked_at = now
 
     sensors = psutil_temperature_sensors()
-    if not sensors and os.name == "nt":
-        sensors = windows_temperature_sensors()
+    if os.name == "nt":
+        sensors.extend(windows_temperature_sensors())
     _temperature_sensors_cache = dedupe_temperature_sensors(sensors)
     return _temperature_sensors_cache
 
@@ -122,9 +122,7 @@ def psutil_temperature_sensors() -> list[dict[str, Any]]:
 def windows_temperature_sensors() -> list[dict[str, Any]]:
     sensors: list[dict[str, Any]] = []
     for namespace in ("root\\LibreHardwareMonitor", "root\\OpenHardwareMonitor"):
-        sensors = hardware_monitor_temperature_sensors(namespace)
-        if sensors:
-            return sensors
+        sensors.extend(hardware_monitor_temperature_sensors(namespace))
 
     acpi_value = acpi_thermal_zone_temperature()
     if acpi_value is not None:
@@ -186,11 +184,6 @@ def make_temperature_sensor(sensor_id: str, label: str, value: Any) -> dict[str,
     clean_id = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", sensor_id.strip().lower()).strip("-")[:128]
     clean_label = label.strip()[:96] or clean_id
     return {"id": clean_id or "temperature", "label": clean_label, "temperatureC": temperature}
-
-
-def is_cpu_temperature(sensor: dict[str, Any]) -> bool:
-    sensor_name = f"{sensor.get('id', '')} {sensor.get('label', '')}".lower()
-    return any(term in sensor_name for term in ("cpu", "package", "core", "tctl", "tdie", "ccd"))
 
 
 def dedupe_temperature_sensors(sensors: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -503,7 +496,6 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     memory = psutil.virtual_memory()
     network, disk_rates = tracker.sample()
     thermal_sensors = temperature_sensors()
-    cpu_temp = next((sensor["temperatureC"] for sensor in thermal_sensors if is_cpu_temperature(sensor)), None)
     cpu_clock = cpu_clock_mhz()
     disk_metrics = disk_usage_metrics()
 
@@ -529,8 +521,6 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
         "uptimeSeconds": max(0, time.time() - psutil.boot_time()),
     }
 
-    if cpu_temp is not None:
-        payload["cpu"]["temperatureC"] = cpu_temp
     if cpu_clock is not None:
         payload["cpu"]["clockMhz"] = cpu_clock
 
