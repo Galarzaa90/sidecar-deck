@@ -88,6 +88,10 @@ def disk_usage_percent() -> float | None:
 
 
 def nvidia_gpu_metrics() -> dict[str, Any] | None:
+    creationflags = 0
+    if os.name == "nt":
+        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
     try:
         result = subprocess.run(
             [
@@ -97,6 +101,7 @@ def nvidia_gpu_metrics() -> dict[str, Any] | None:
             ],
             check=True,
             capture_output=True,
+            creationflags=creationflags,
             text=True,
             timeout=2,
         )
