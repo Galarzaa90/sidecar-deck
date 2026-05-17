@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import logging
+import json
 import os
+import platform
 import socket
 import subprocess
 import time
@@ -25,6 +27,15 @@ METRICS_TOKEN = os.getenv("METRICS_TOKEN", "change-me")
 PUSH_INTERVAL_SECONDS = float(os.getenv("PUSH_INTERVAL_SECONDS", "1"))
 HOSTNAME = os.getenv("HOSTNAME") or socket.gethostname()
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
+CPU_TEMPERATURE_POLL_SECONDS = float(os.getenv("CPU_TEMPERATURE_POLL_SECONDS", "10"))
+_cpu_temperature_checked_at = 0.0
+_cpu_temperature_cache: float | None = None
+
+
+def hidden_creation_flags() -> int:
+    if os.name == "nt":
+        return getattr(subprocess, "CREATE_NO_WINDOW", 0)
+    return 0
 
 
 def metrics_url(base_url: str) -> str:
@@ -65,10 +76,17 @@ class RateTracker:
 
 
 def first_temperature() -> float | None:
+    global _cpu_temperature_cache, _cpu_temperature_checked_at
+
+    now = time.monotonic()
+    if now - _cpu_temperature_checked_at < CPU_TEMPERATURE_POLL_SECONDS:
+        return _cpu_temperature_cache
+    _cpu_temperature_checked_at = now
+
     try:
         temps = psutil.sensors_temperatures(fahrenheit=False)
     except (AttributeError, OSError):
-        return None
+        temps = {}
 
     preferred = ["coretemp", "k10temp", "cpu_thermal", "acpitz"]
     for key in preferred + list(temps):
@@ -76,8 +94,137 @@ def first_temperature() -> float | None:
         if readings:
             current = readings[0].current
             if current is not None:
-                return float(current)
-    return None
+                _cpu_temperature_cache = float(current)
+                return _cpu_temperature_cache
+    _cpu_temperature_cache = windows_cpu_temperature()
+    return _cpu_temperature_cache
+
+
+def windows_cpu_temperature() -> float | None:
+    if os.name != "nt":
+        return None
+
+    for namespace in ("root\\LibreHardwareMonitor", "root\\OpenHardwareMonitor"):
+        value = hardware_monitor_temperature(namespace)
+        if value is not None:
+            return value
+
+    return acpi_thermal_zone_temperature()
+
+
+def hardware_monitor_temperature(namespace: str) -> float | None:
+    command = (
+        "$sensors = Get-CimInstance -Namespace '"
+        + namespace
+        + "' -ClassName Sensor -ErrorAction SilentlyContinue | "
+        + "Where-Object { $_.SensorType -eq 'Temperature' -and "
+        + "($_.Name -match 'CPU|Package|Tctl|Tdie|Core' -or $_.Identifier -match '/(amd|intel)cpu/') } | "
+        + "Select-Object Name,Value; $sensors | ConvertTo-Json -Compress"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            check=False,
+            capture_output=True,
+            creationflags=hidden_creation_flags(),
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    output = result.stdout.strip()
+    if not output:
+        return None
+
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        return None
+
+    sensors = data if isinstance(data, list) else [data]
+    preferred_names = ["package", "tctl", "tdie", "cpu"]
+    readings: list[tuple[int, float]] = []
+    for sensor in sensors:
+        try:
+            name = str(sensor.get("Name", "")).lower()
+            value = float(sensor["Value"])
+        except (AttributeError, KeyError, TypeError, ValueError):
+            continue
+        if 0 < value < 130:
+            rank = next((index for index, item in enumerate(preferred_names) if item in name), len(preferred_names))
+            readings.append((rank, value))
+
+    if not readings:
+        return None
+    readings.sort(key=lambda item: item[0])
+    return readings[0][1]
+
+
+def acpi_thermal_zone_temperature() -> float | None:
+    command = (
+        "Get-CimInstance -Namespace root/wmi -ClassName MSAcpi_ThermalZoneTemperature "
+        "-ErrorAction SilentlyContinue | Select-Object -First 1 CurrentTemperature | ConvertTo-Json -Compress"
+    )
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            check=False,
+            capture_output=True,
+            creationflags=hidden_creation_flags(),
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    output = result.stdout.strip()
+    if not output:
+        return None
+
+    try:
+        data = json.loads(output)
+        raw_value = float(data["CurrentTemperature"])
+    except (json.JSONDecodeError, KeyError, TypeError, ValueError):
+        return None
+
+    celsius = (raw_value / 10) - 273.15
+    return celsius if 0 < celsius < 130 else None
+
+
+def cpu_clock_mhz() -> float | None:
+    try:
+        frequency = psutil.cpu_freq()
+    except (AttributeError, OSError):
+        return None
+    if frequency is None or frequency.current <= 0:
+        return None
+    return float(frequency.current)
+
+
+def cpu_name() -> str | None:
+    name = windows_cpu_name() if os.name == "nt" else None
+    if not name:
+        name = platform.processor().strip()
+    return name[:128] if name else None
+
+
+def windows_cpu_name() -> str | None:
+    command = "Get-CimInstance Win32_Processor | Select-Object -First 1 -ExpandProperty Name"
+    try:
+        result = subprocess.run(
+            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
+            check=False,
+            capture_output=True,
+            creationflags=hidden_creation_flags(),
+            text=True,
+            timeout=2,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        return None
+
+    name = result.stdout.strip()
+    return name or None
 
 
 def disk_usage_percent() -> float | None:
@@ -114,10 +261,6 @@ def top_memory_processes(total_memory: int, limit: int = 3) -> list[dict[str, An
 
 
 def nvidia_gpu_metrics() -> dict[str, Any] | None:
-    creationflags = 0
-    if os.name == "nt":
-        creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
-
     try:
         result = subprocess.run(
             [
@@ -127,7 +270,7 @@ def nvidia_gpu_metrics() -> dict[str, Any] | None:
             ],
             check=True,
             capture_output=True,
-            creationflags=creationflags,
+            creationflags=hidden_creation_flags(),
             text=True,
             timeout=2,
         )
@@ -156,12 +299,14 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
     memory = psutil.virtual_memory()
     network, disk_rates = tracker.sample()
     cpu_temp = first_temperature()
+    cpu_clock = cpu_clock_mhz()
     disk_percent = disk_usage_percent()
 
     payload: dict[str, Any] = {
         "host": HOSTNAME,
         "timestamp": datetime.now(timezone.utc).isoformat().replace("+00:00", "Z"),
         "cpu": {
+            "name": cpu_name(),
             "usagePercent": psutil.cpu_percent(interval=None),
             "perCoreUsagePercent": psutil.cpu_percent(interval=None, percpu=True),
         },
@@ -181,13 +326,13 @@ def collect_metrics(tracker: RateTracker) -> dict[str, Any]:
 
     if cpu_temp is not None:
         payload["cpu"]["temperatureC"] = cpu_temp
+    if cpu_clock is not None:
+        payload["cpu"]["clockMhz"] = cpu_clock
 
     gpu = nvidia_gpu_metrics()
     if gpu is not None:
         payload["gpu"] = gpu
 
-    # LibreHardwareMonitor/OpenHardwareMonitor can be added here later without
-    # changing the backend contract.
     return payload
 
 

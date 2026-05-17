@@ -11,6 +11,7 @@ class FlexibleModel(BaseModel):
 
 
 class CpuMetrics(FlexibleModel):
+    name: str | None = Field(default=None, max_length=128)
     usagePercent: float | None = Field(default=None, ge=0, le=100)
     temperatureC: float | None = None
     clockMhz: float | None = Field(default=None, ge=0)

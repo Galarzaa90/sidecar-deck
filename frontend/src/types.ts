@@ -1,4 +1,5 @@
 export interface CpuMetrics {
+  name?: string | null;
   usagePercent?: number | null;
   temperatureC?: number | null;
   clockMhz?: number | null;

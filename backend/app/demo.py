@@ -41,6 +41,7 @@ def _make_demo_payload(tick: int, rng: random.Random) -> MetricPayload:
         host="demo-gaming-pc",
         timestamp=datetime.now(timezone.utc),
         cpu=CpuMetrics(
+            name="Demo Ryzen 5 5600X",
             usagePercent=round(cpu, 1),
             temperatureC=round(38 + cpu * 0.42 + rng.uniform(-1.5, 1.5), 1),
             clockMhz=round(3600 + cpu * 9),

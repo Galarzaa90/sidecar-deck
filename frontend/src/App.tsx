@@ -136,10 +136,9 @@ export default function App() {
           icon={<Cpu size={28} />}
           label="CPU"
           value={percent(latest?.cpu?.usagePercent)}
-          sub={latest?.host ?? 'waiting for metrics'}
+          sub={latest?.cpu?.name ?? latest?.host ?? 'waiting for metrics'}
           sparkValues={cpuSeries}
         >
-          <span>Temp {number1(latest?.cpu?.temperatureC, 'C')}</span>
           <span>Clock {latest?.cpu?.clockMhz ? `${Math.round(latest.cpu.clockMhz)} MHz` : '--'}</span>
           <div className="core-bars">
             {perCore.slice(0, 16).map((core, index) => (
