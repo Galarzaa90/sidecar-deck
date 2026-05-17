@@ -83,21 +83,46 @@ def first_temperature() -> float | None:
         return _cpu_temperature_cache
     _cpu_temperature_checked_at = now
 
+    _cpu_temperature_cache = psutil_cpu_temperature() or windows_cpu_temperature()
+    return _cpu_temperature_cache
+
+
+def psutil_cpu_temperature() -> float | None:
     try:
         temps = psutil.sensors_temperatures(fahrenheit=False)
     except (AttributeError, OSError):
-        temps = {}
+        return None
 
-    preferred = ["coretemp", "k10temp", "cpu_thermal", "acpitz"]
-    for key in preferred + list(temps):
-        readings = temps.get(key)
-        if readings:
-            current = readings[0].current
-            if current is not None:
-                _cpu_temperature_cache = float(current)
-                return _cpu_temperature_cache
-    _cpu_temperature_cache = windows_cpu_temperature()
-    return _cpu_temperature_cache
+    preferred_keys = ["coretemp", "k10temp", "cpu_thermal", "acpitz"]
+    cpu_terms = ("cpu", "package", "core", "tctl", "tdie", "ccd", "soc")
+    readings: list[tuple[int, float]] = []
+
+    for key in preferred_keys + [item for item in temps if item not in preferred_keys]:
+        for reading in temps.get(key, []):
+            current = getattr(reading, "current", None)
+            if current is None:
+                continue
+            try:
+                value = float(current)
+            except (TypeError, ValueError):
+                continue
+            if not 0 < value < 130:
+                continue
+
+            label = str(getattr(reading, "label", "") or "").lower()
+            key_name = key.lower()
+            sensor_name = f"{key_name} {label}".strip()
+            if not any(term in sensor_name for term in cpu_terms):
+                continue
+
+            key_rank = preferred_keys.index(key) if key in preferred_keys else len(preferred_keys)
+            term_rank = next((index for index, term in enumerate(cpu_terms) if term in sensor_name), len(cpu_terms))
+            readings.append((key_rank * 10 + term_rank, value))
+
+    if not readings:
+        return None
+    readings.sort(key=lambda item: item[0])
+    return readings[0][1]
 
 
 def windows_cpu_temperature() -> float | None:

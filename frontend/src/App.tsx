@@ -1,4 +1,4 @@
-import { Activity, Cpu, Gauge, MemoryStick, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, Cpu, Gauge, HardDrive, MemoryStick, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
@@ -69,6 +69,16 @@ function processShare(processBytes: number, topBytes: number): number {
   return Math.max(8, Math.min(100, (processBytes / topBytes) * 100));
 }
 
+function uptime(seconds?: number | null): string {
+  if (seconds == null) return '--';
+  const days = Math.floor(seconds / 86400);
+  const hours = Math.floor((seconds % 86400) / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (days > 0) return `${days}d ${hours}h`;
+  if (hours > 0) return `${hours}h ${minutes}m`;
+  return `${minutes}m`;
+}
+
 function StatCard({
   tone,
   icon,
@@ -109,6 +119,43 @@ function StatCard({
   );
 }
 
+function CompactCard({
+  tone,
+  icon,
+  label,
+  value,
+  sub,
+  sparkValues,
+  sparkMax = 100,
+  children,
+}: {
+  tone: string;
+  icon: ReactNode;
+  label: string;
+  value: string;
+  sub: string;
+  sparkValues?: Array<number | null | undefined>;
+  sparkMax?: number;
+  children: ReactNode;
+}) {
+  return (
+    <section className="compact-card" style={{ '--tone': tone } as CSSProperties}>
+      <div className="compact-top">
+        <div className="compact-icon-wrap">{icon}</div>
+        <div className="compact-copy">
+          <p className="label">{label}</p>
+          <p className="subtle">{sub}</p>
+        </div>
+      </div>
+      <div className="compact-main">
+        <span className="compact-value">{value}</span>
+        {sparkValues ? <Sparkline values={sparkValues} color={tone} max={sparkMax} /> : null}
+      </div>
+      <div className="compact-details">{children}</div>
+    </section>
+  );
+}
+
 export default function App() {
   const { envelope, connected } = useMetrics();
   const [now, setNow] = useState(new Date());
@@ -126,6 +173,7 @@ export default function App() {
   const ramSeries = useMemo(() => series(history, (item) => item.memory?.usagePercent), [history]);
   const gpuSeries = useMemo(() => series(history, (item) => item.gpu?.usagePercent), [history]);
   const networkSeries = useMemo(() => series(history, (item) => (item.network?.rxBytesPerSecond ?? 0) / 1024 / 1024), [history]);
+  const diskSeries = useMemo(() => series(history, (item) => item.disk?.usagePercent), [history]);
   const perCore = latest?.cpu?.perCoreUsagePercent ?? [];
 
   return (
@@ -139,7 +187,7 @@ export default function App() {
           sub={latest?.cpu?.name ?? latest?.host ?? 'waiting for metrics'}
           sparkValues={cpuSeries}
         >
-          <span>Clock {latest?.cpu?.clockMhz ? `${Math.round(latest.cpu.clockMhz)} MHz` : '--'}</span>
+          {latest?.cpu?.temperatureC != null ? <span>Temp {number1(latest.cpu.temperatureC, 'C')}</span> : null}
           <div className="core-bars">
             {perCore.slice(0, 16).map((core, index) => (
               <i key={index} style={{ height: `${Math.max(8, core)}%` }} />
@@ -192,36 +240,57 @@ export default function App() {
           <span>Temp {number1(latest?.gpu?.temperatureC, 'C')}</span>
         </StatCard>
 
-        <StatCard
-          tone="#ff8b3d"
-          icon={<Thermometer size={28} />}
-          label="Thermals"
-          value={number1(maxTemp(latest), 'C')}
-          sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'high temperature' : 'thermal headroom'}
-          sparkValues={tempSeries}
-          sparkMax={100}
-        >
-          <span>CPU {number1(latest?.cpu?.temperatureC, 'C')}</span>
-          <span>GPU {number1(latest?.gpu?.temperatureC, 'C')}</span>
-          <span>Disk {percent(latest?.disk?.usagePercent)}</span>
-        </StatCard>
+        <div className="compact-grid">
+          <CompactCard
+            tone="#ff8b3d"
+            icon={<Thermometer size={22} />}
+            label="Thermals"
+            value={number1(maxTemp(latest), 'C')}
+            sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'high temperature' : 'thermal headroom'}
+            sparkValues={tempSeries}
+          >
+            <span>CPU {number1(latest?.cpu?.temperatureC, 'C')}</span>
+            <span>GPU {number1(latest?.gpu?.temperatureC, 'C')}</span>
+          </CompactCard>
 
-        <StatCard
-          tone="#d7dde7"
-          icon={connected ? <Wifi size={28} /> : <WifiOff size={28} />}
-          label="Network"
-          value={clock(now)}
-          sub={displayStatus.toUpperCase()}
-          sparkValues={networkSeries}
-          sparkMax={8}
-        >
-          <span>Down {throughput(latest?.network?.rxBytesPerSecond)}</span>
-          <span>Up {throughput(latest?.network?.txBytesPerSecond)}</span>
-          <span>Last {age(envelope.ageSeconds)}</span>
-          <span className="status-pill">
-            <Activity size={14} /> {connected ? envelope.status : 'disconnected'}
-          </span>
-        </StatCard>
+          <CompactCard
+            tone="#f4d35e"
+            icon={<HardDrive size={22} />}
+            label="Disk"
+            value={percent(latest?.disk?.usagePercent)}
+            sub="storage activity"
+            sparkValues={diskSeries}
+          >
+            <span>Read {throughput(latest?.disk?.readBytesPerSecond)}</span>
+            <span>Write {throughput(latest?.disk?.writeBytesPerSecond)}</span>
+          </CompactCard>
+
+          <CompactCard
+            tone="#d7dde7"
+            icon={<Network size={22} />}
+            label="Network"
+            value={throughput(latest?.network?.rxBytesPerSecond)}
+            sub="download rate"
+            sparkValues={networkSeries}
+            sparkMax={8}
+          >
+            <span>Up {throughput(latest?.network?.txBytesPerSecond)}</span>
+            <span>Last {age(envelope.ageSeconds)}</span>
+          </CompactCard>
+
+          <CompactCard
+            tone="#78a6ff"
+            icon={connected ? <Wifi size={22} /> : <WifiOff size={22} />}
+            label="Status"
+            value={clock(now)}
+            sub={displayStatus.toUpperCase()}
+          >
+            <span>Uptime {uptime(latest?.uptimeSeconds)}</span>
+            <span className="status-pill">
+              <Activity size={14} /> {connected ? envelope.status : 'disconnected'}
+            </span>
+          </CompactCard>
+        </div>
       </div>
     </main>
   );
