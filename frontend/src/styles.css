@@ -409,7 +409,7 @@ body {
 .network-meter {
   min-width: 0;
   display: grid;
-  grid-template-columns: minmax(86px, auto) minmax(0, 1fr);
+  grid-template-columns: minmax(124px, auto) minmax(0, 1fr);
   align-items: center;
   gap: 10px;
 }
@@ -418,10 +418,18 @@ body {
   min-width: 0;
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 7px;
   color: #dfe6f2;
+  font-size: 22px;
+  font-weight: 850;
+  line-height: 1;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.network-rate svg {
+  color: var(--tone);
+  flex: 0 0 auto;
 }
 
 .network-meter .sparkline {

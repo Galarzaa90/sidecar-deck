@@ -331,13 +331,13 @@ export default function App() {
             <div className="network-meters">
               <div className="network-meter">
                 <span className="network-rate">
-                  <ArrowUp size={15} /> {throughput(latest?.network?.txBytesPerSecond)}
+                  <ArrowUp size={18} /> {throughput(latest?.network?.txBytesPerSecond)}
                 </span>
                 <Sparkline values={networkUpSeries} color="#d7dde7" max={8} />
               </div>
               <div className="network-meter">
                 <span className="network-rate">
-                  <ArrowDown size={15} /> {throughput(latest?.network?.rxBytesPerSecond)}
+                  <ArrowDown size={18} /> {throughput(latest?.network?.rxBytesPerSecond)}
                 </span>
                 <Sparkline values={networkDownSeries} color="#d7dde7" max={8} />
               </div>
