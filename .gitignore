@@ -4,6 +4,8 @@ __pycache__/
 .venv/
 node_modules/
 dist/
+build/
+*.egg-info/
 frontend/dist/
 frontend/node_modules/
 *.pyc

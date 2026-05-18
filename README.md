@@ -51,10 +51,10 @@ http://localhost:5173
 For host metrics from a Windows machine, install the [agent](agent/README.md):
 
 ```powershell
-sidecar-deck-agentctl install --dashboard-url http://homelab.local:8080 --metrics-token change-me --hostname gaming-pc
+.\SidecarDeckAgent.ps1 install -DashboardUrl http://homelab.local:8080 -MetricsToken change-me -Hostname gaming-pc
 ```
 
-Use `sidecar-deck-agentctl start`, `stop`, `restart`, `status`, `update`, and `uninstall` to manage the Windows background task.
+Use `SidecarDeckAgent.ps1 start`, `stop`, `restart`, `status`, `update`, and `uninstall` to manage the Windows background task.
 
 ## Docker Images
 

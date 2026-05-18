@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import ctypes
 import json
 import os
 import platform
@@ -54,12 +55,15 @@ DIAGNOSTIC_HTTP_HOST = os.getenv("DIAGNOSTIC_HTTP_HOST", "127.0.0.1")
 DIAGNOSTIC_HTTP_PORT = int(os.getenv("DIAGNOSTIC_HTTP_PORT", "8765"))
 LOGITECH_BATTERY_POLL_SECONDS = float(os.getenv("LOGITECH_BATTERY_POLL_SECONDS", "30"))
 BLUETOOTH_BATTERY_POLL_SECONDS = float(os.getenv("BLUETOOTH_BATTERY_POLL_SECONDS", "60"))
+XINPUT_BATTERY_POLL_SECONDS = float(os.getenv("XINPUT_BATTERY_POLL_SECONDS", "30"))
 _temperature_sensors_checked_at = 0.0
 _temperature_sensors_cache: list[TemperatureMetrics] = []
 _logitech_battery_checked_at = 0.0
 _logitech_battery_cache: list[PeripheralBatteryMetrics] = []
 _bluetooth_battery_checked_at = 0.0
 _bluetooth_battery_cache: list[PeripheralBatteryMetrics] = []
+_xinput_battery_checked_at = 0.0
+_xinput_battery_cache: list[PeripheralBatteryMetrics] = []
 _latest_payload_lock = threading.Lock()
 _latest_payload_json: dict[str, Any] | None = None
 IGNORED_TOP_MEMORY_PROCESS_NAMES = {"memcompression"}
@@ -661,6 +665,25 @@ def bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
     return _bluetooth_battery_cache
 
 
+def xinput_battery_devices() -> list[PeripheralBatteryMetrics]:
+    global _xinput_battery_cache, _xinput_battery_checked_at
+
+    if os.name != "nt":
+        return []
+
+    now = time.monotonic()
+    if now - _xinput_battery_checked_at < XINPUT_BATTERY_POLL_SECONDS:
+        return _xinput_battery_cache
+    _xinput_battery_checked_at = now
+
+    try:
+        _xinput_battery_cache = fetch_xinput_battery_devices()
+    except Exception as exc:
+        logger.debug("xinput battery lookup failed: %s", exc)
+        _xinput_battery_cache = []
+    return _xinput_battery_cache
+
+
 async def fetch_logitech_battery_devices() -> list[PeripheralBatteryMetrics]:
     headers = {
         "Origin": "file://",
@@ -758,6 +781,88 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
     return list(devices.values())
 
 
+def fetch_xinput_battery_devices() -> list[PeripheralBatteryMetrics]:
+    xinput = load_xinput()
+    if xinput is None:
+        return []
+
+    class XInputBatteryInformation(ctypes.Structure):
+        _fields_ = [
+            ("battery_type", ctypes.c_ubyte),
+            ("battery_level", ctypes.c_ubyte),
+        ]
+
+    get_battery_information = xinput.XInputGetBatteryInformation
+    get_battery_information.argtypes = [ctypes.c_uint, ctypes.c_ubyte, ctypes.POINTER(XInputBatteryInformation)]
+    get_battery_information.restype = ctypes.c_uint
+
+    battery_type_disconnected = 0x00
+    battery_type_wired = 0x01
+    battery_type_unknown = 0xFF
+    battery_level_to_percent = {
+        0x00: 0,
+        0x01: 25,
+        0x02: 60,
+        0x03: 100,
+    }
+    devices: list[PeripheralBatteryMetrics] = []
+
+    for user_index in range(4):
+        battery = XInputBatteryInformation()
+        result = get_battery_information(user_index, 0, ctypes.byref(battery))
+        if result != 0 or battery.battery_type == battery_type_disconnected:
+            continue
+
+        if battery.battery_type == battery_type_wired:
+            devices.append(
+                PeripheralBatteryMetrics(
+                    id=f"xinput-controller-{user_index + 1}",
+                    name=f"Xbox Controller {user_index + 1}",
+                    batteryPercent=100,
+                    charging=True,
+                )
+            )
+            continue
+
+        battery_percent = battery_level_to_percent.get(int(battery.battery_level))
+        if battery_percent is None and battery.battery_type == battery_type_unknown:
+            continue
+        if battery_percent is None:
+            battery_percent = 0
+
+        devices.append(
+            PeripheralBatteryMetrics(
+                id=f"xinput-controller-{user_index + 1}",
+                name=f"Xbox Controller {user_index + 1}",
+                batteryPercent=battery_percent,
+                charging=False,
+            )
+        )
+
+    return devices
+
+
+def dedupe_peripheral_batteries(devices: list[PeripheralBatteryMetrics]) -> list[PeripheralBatteryMetrics]:
+    deduped: list[PeripheralBatteryMetrics] = []
+    seen: set[str] = set()
+    for device in devices:
+        key = device.id.casefold()
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(device)
+    return deduped
+
+
+def load_xinput() -> Any | None:
+    for dll_name in ("xinput1_4.dll", "xinput9_1_0.dll", "xinput1_3.dll"):
+        try:
+            return ctypes.WinDLL(dll_name)
+        except OSError:
+            continue
+    return None
+
+
 def collect_metrics(tracker: RateTracker) -> MetricPayload:
     memory = psutil.virtual_memory()
     network, disk_rates = tracker.sample()
@@ -779,7 +884,7 @@ def collect_metrics(tracker: RateTracker) -> MetricPayload:
         if gpu_sensor is not None:
             thermal_sensors.append(gpu_sensor)
 
-    batteries = logitech_battery_devices() + bluetooth_battery_devices()
+    batteries = dedupe_peripheral_batteries(xinput_battery_devices() + logitech_battery_devices() + bluetooth_battery_devices())
 
     return MetricPayload(
         host=HOSTNAME,
