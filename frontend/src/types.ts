@@ -67,6 +67,7 @@ export interface PeripheralBatteryMetrics {
   name: string;
   batteryPercent: number;
   charging?: boolean | null;
+  source?: string | null;
 }
 
 export interface MetricPayload {

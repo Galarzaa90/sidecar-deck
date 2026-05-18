@@ -47,7 +47,7 @@ def test_post_accepts_valid_payload() -> None:
                 "totalBytes": 2048,
                 "topProcesses": [{"name": "browser", "pids": [100, 101], "processCount": 2, "rssBytes": 512, "usagePercent": 25.0}],
             },
-            "peripheralBatteries": [{"id": "keyboard", "name": "G915 X", "batteryPercent": 45, "charging": False}],
+            "peripheralBatteries": [{"id": "keyboard", "name": "G915 X", "batteryPercent": 45, "charging": False, "source": "logitech"}],
         },
     )
 
@@ -59,6 +59,7 @@ def test_post_accepts_valid_payload() -> None:
     assert body["latest"]["memory"]["topProcesses"][0]["pids"] == [100, 101]
     assert body["latest"]["memory"]["topProcesses"][0]["processCount"] == 2
     assert body["latest"]["peripheralBatteries"][0]["batteryPercent"] == 45
+    assert body["latest"]["peripheralBatteries"][0]["source"] == "logitech"
 
 
 def test_post_rejects_invalid_payload() -> None:

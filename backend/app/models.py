@@ -96,6 +96,7 @@ class PeripheralBatteryMetrics(FlexibleModel):
     name: str = Field(min_length=1, max_length=96)
     batteryPercent: float = Field(ge=0, le=100)
     charging: bool = False
+    source: str | None = Field(default=None, max_length=64)
 
 
 class MetricPayload(FlexibleModel):

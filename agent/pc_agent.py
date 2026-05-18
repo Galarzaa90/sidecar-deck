@@ -722,6 +722,7 @@ async def fetch_logitech_battery_devices() -> list[PeripheralBatteryMetrics]:
                     name=str(device.get("displayName") or device.get("extendedDisplayName") or device_id)[:96],
                     batteryPercent=max(0, min(100, battery_percent)),
                     charging=bool(payload.get("charging")),
+                    source="logitech",
                 )
             )
 
@@ -776,6 +777,7 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
                 name=str(device_info.name or "Bluetooth device")[:96],
                 batteryPercent=max(0, min(100, battery_percent)),
                 charging=False,
+                source="bluetooth",
             )
 
     return list(devices.values())
@@ -820,6 +822,7 @@ def fetch_xinput_battery_devices() -> list[PeripheralBatteryMetrics]:
                     name=f"Xbox Controller {user_index + 1}",
                     batteryPercent=100,
                     charging=True,
+                    source="xinput",
                 )
             )
             continue
@@ -836,6 +839,7 @@ def fetch_xinput_battery_devices() -> list[PeripheralBatteryMetrics]:
                 name=f"Xbox Controller {user_index + 1}",
                 batteryPercent=battery_percent,
                 charging=False,
+                source="xinput",
             )
         )
 
@@ -852,6 +856,23 @@ def dedupe_peripheral_batteries(devices: list[PeripheralBatteryMetrics]) -> list
         seen.add(key)
         deduped.append(device)
     return deduped
+
+
+def log_peripheral_batteries(devices: list[PeripheralBatteryMetrics]) -> None:
+    if not logger.isEnabledFor(logging.DEBUG):
+        return
+
+    if not devices:
+        logger.debug("peripheral batteries: none detected")
+        return
+
+    summary = ", ".join(
+        f"{device.name}={device.batteryPercent:g}%"
+        f"{' charging' if device.charging else ''}"
+        f"{f' source={device.source}' if device.source else ''}"
+        for device in devices
+    )
+    logger.debug("peripheral batteries: %s", summary)
 
 
 def load_xinput() -> Any | None:
@@ -885,6 +906,7 @@ def collect_metrics(tracker: RateTracker) -> MetricPayload:
             thermal_sensors.append(gpu_sensor)
 
     batteries = dedupe_peripheral_batteries(xinput_battery_devices() + logitech_battery_devices() + bluetooth_battery_devices())
+    log_peripheral_batteries(batteries)
 
     return MetricPayload(
         host=HOSTNAME,
