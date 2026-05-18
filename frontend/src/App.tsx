@@ -80,24 +80,6 @@ function temperatureItems(metric?: MetricPayload | null): TemperatureMetrics[] {
   return fallback;
 }
 
-function pagedTemperatureItems(
-  sensors: TemperatureMetrics[],
-  date: Date,
-  pageSize = 3,
-  pageMs = 8000,
-): { items: TemperatureMetrics[]; page: number; pageCount: number } {
-  const ordered = [...sensors].sort((a, b) => b.temperatureC - a.temperatureC);
-  if (ordered.length <= pageSize) return { items: ordered, page: 0, pageCount: 1 };
-
-  const pageCount = Math.ceil(ordered.length / pageSize);
-  const page = Math.floor(date.getTime() / pageMs) % pageCount;
-  return {
-    items: ordered.slice(page * pageSize, page * pageSize + pageSize),
-    page,
-    pageCount,
-  };
-}
-
 function processLabel(name: string): string {
   return name.replace(/\.exe$/i, '');
 }
@@ -277,9 +259,9 @@ export default function App() {
   const lowestBattery = batteries.length
     ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent)[0]
     : null;
-  const batteryList = batteries.length ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent).slice(0, 4) : [];
+  const batteryList = batteries.length ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent) : [];
   const thermals = temperatureItems(latest);
-  const visibleThermals = pagedTemperatureItems(thermals, now);
+  const thermalList = [...thermals].sort((a, b) => b.temperatureC - a.temperatureC);
   const diskVolumes = latest?.disk?.volumes?.length
     ? latest.disk.volumes
     : latest?.disk
@@ -307,21 +289,17 @@ export default function App() {
             {thermals.length > 0 ? (
               <>
                 <RankedMeterList
-                  items={visibleThermals.items.map((sensor) => ({
+                  items={thermalList.map((sensor) => ({
                     id: sensor.id,
                     label: sensor.label,
                     value: number1(sensor.temperatureC, 'C'),
                     percent: sensor.temperatureC,
                   }))}
+                  pageDate={now}
+                  pageLabel="Temperature"
+                  pageSize={3}
                   showRank={false}
                 />
-                {visibleThermals.pageCount > 1 ? (
-                  <div className="thermal-page-dots" aria-label={`Temperature page ${visibleThermals.page + 1} of ${visibleThermals.pageCount}`}>
-                    {Array.from({ length: visibleThermals.pageCount }, (_, index) => (
-                      <i key={index} className={index === visibleThermals.page ? 'active' : undefined} />
-                    ))}
-                  </div>
-                ) : null}
               </>
             ) : (
               <span className="empty-detail">Temperature sensors unavailable</span>
@@ -340,12 +318,15 @@ export default function App() {
             sub="Storage"
           >
             <RankedMeterList
-              items={diskVolumes.slice(0, 4).map((volume) => ({
+              items={diskVolumes.map((volume) => ({
                 id: volume.mountpoint,
                 label: volume.name,
                 value: `${bytes(volume.freeBytes)} left`,
                 percent: diskUsedShare(volume.usedBytes, volume.freeBytes, volume.totalBytes, volume.usagePercent),
               }))}
+              pageDate={now}
+              pageLabel="Disk"
+              pageSize={3}
               showRank={false}
             />
           </CompactCard>
@@ -397,6 +378,9 @@ export default function App() {
                     value: `${percent(battery.batteryPercent)}${battery.charging ? ' +' : ''}`,
                     percent: battery.batteryPercent,
                   }))}
+                  pageDate={now}
+                  pageLabel="Battery"
+                  pageSize={3}
                   showRank={false}
                 />
               </CompactCard>
