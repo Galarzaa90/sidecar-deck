@@ -740,7 +740,7 @@ async def receive_logitech_message(websocket: Any, path: str) -> dict[str, Any]:
 async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
     from uuid import UUID
 
-    from winrt.windows.devices.bluetooth.genericattributeprofile import GattDeviceService
+    from winrt.windows.devices.bluetooth.genericattributeprofile import GattDeviceService, GattSessionStatus
     from winrt.windows.devices.enumeration import DeviceInformation
     from winrt.windows.storage.streams import DataReader
 
@@ -755,6 +755,9 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
 
         service = await GattDeviceService.from_id_async(device_id)
         if service is None:
+            continue
+        if service.session.session_status != GattSessionStatus.ACTIVE:
+            logger.debug("bluetooth battery skipped inactive session: name=%s status=%s", device_info.name, service.session.session_status)
             continue
 
         result = await service.get_characteristics_for_uuid_async(battery_level_uuid)
