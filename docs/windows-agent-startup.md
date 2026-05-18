@@ -34,33 +34,41 @@ py --version
 
 ## 2. Install the Agent
 
-Install the agent directly from Git. This keeps only the agent virtual environment and local config on the Windows PC.
+Install the package into a small temporary virtual environment, then let `sidecar-deck-agentctl` create the real agent installation and startup task.
 
 ```powershell
-mkdir C:\SidecarDeckAgent
-cd C:\SidecarDeckAgent
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install --upgrade pip
-.\.venv\Scripts\python.exe -m pip install "git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=agent"
-notepad .env
+py -m venv $env:TEMP\sidecar-deck-bootstrap
+& $env:TEMP\sidecar-deck-bootstrap\Scripts\python.exe -m pip install --upgrade pip
+& $env:TEMP\sidecar-deck-bootstrap\Scripts\python.exe -m pip install "git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=agent"
+& $env:TEMP\sidecar-deck-bootstrap\Scripts\sidecar-deck-agentctl.exe install `
+  --dashboard-url http://homelab.local:8080 `
+  --metrics-token change-me `
+  --hostname gaming-pc
 ```
+
+If LibreHardwareMonitor is running as Administrator and you want WMI temperatures, add `--run-elevated` to the install command so the agent task can query the same elevated WMI provider.
 
 For a private repository, use a GitHub authentication method supported by your Git installation, such as Git Credential Manager or an SSH URL:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install "git+ssh://git@github.com/Galarzaa90/sidecar-deck#subdirectory=agent"
+& $env:TEMP\sidecar-deck-bootstrap\Scripts\sidecar-deck-agentctl.exe install `
+  --source "git+ssh://git@github.com/Galarzaa90/sidecar-deck#subdirectory=agent" `
+  --dashboard-url http://homelab.local:8080 `
+  --metrics-token change-me `
+  --hostname gaming-pc
 ```
 
 To upgrade later:
 
 ```powershell
-cd C:\SidecarDeckAgent
-.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall "git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=agent"
+sidecar-deck-agentctl update
 ```
+
+The install command adds `%LOCALAPPDATA%\SidecarDeckAgent\.venv\Scripts` to your user PATH. Open a new PowerShell window before running the short `sidecar-deck-agentctl ...` commands below.
 
 ## 3. Configure the Agent
 
-Set these values in `C:\SidecarDeckAgent\.env`.
+The install command writes these values to `%LOCALAPPDATA%\SidecarDeckAgent\.env`.
 
 ```env
 DASHBOARD_BASE_URL=http://homelab.local:8080
@@ -68,6 +76,9 @@ METRICS_TOKEN=change-me
 PUSH_INTERVAL_SECONDS=1
 HOSTNAME=gaming-pc
 LOG_LEVEL=INFO
+LIBRE_HARDWARE_MONITOR_API_URL=
+LIBRE_HARDWARE_MONITOR_TIMEOUT_SECONDS=0.75
+TEMPERATURE_SENSOR_LIMIT=0
 ```
 
 Use the same `METRICS_TOKEN` configured for the backend. If `homelab.local` does not resolve from Windows, use the server IP address:
@@ -76,12 +87,17 @@ Use the same `METRICS_TOKEN` configured for the backend. If `homelab.local` does
 DASHBOARD_BASE_URL=http://192.168.1.50:8080
 ```
 
-## 4. Test the Agent Manually
-
-From the directory that contains `.env`:
+To change settings later, edit the `.env` file and restart the task:
 
 ```powershell
-.\.venv\Scripts\sidecar-deck-agent.exe
+notepad $env:LOCALAPPDATA\SidecarDeckAgent\.env
+sidecar-deck-agentctl restart
+```
+
+## 4. Test the Agent Manually
+
+```powershell
+sidecar-deck-agentctl run
 ```
 
 Expected startup output looks like:
@@ -90,7 +106,7 @@ Expected startup output looks like:
 INFO starting agent for host=gaming-pc base_url=http://homelab.local:8080 metrics_url=http://homelab.local:8080/api/metrics interval=1.0s
 ```
 
-Leave it running for a few seconds and confirm the dashboard switches from demo metrics to the PC host. Stop the manual run with `Ctrl+C`.
+Leave it running for a few seconds and confirm the dashboard shows the PC host. Stop the manual run with `Ctrl+C`.
 
 If you see `metrics push failed`, check:
 
@@ -99,55 +115,7 @@ If you see `metrics push failed`, check:
 - `METRICS_TOKEN` matches the backend token.
 - Windows Firewall or the network is not blocking access to the backend.
 
-## 5. Create a Background Startup Task
-
-Use Task Scheduler so the agent starts automatically when you sign in.
-
-Open PowerShell as your normal Windows user, not as Administrator.
-
-Run the whole block in one PowerShell session. The `$Action` variable is created near the top and then passed to `Register-ScheduledTask`; if you only run the registration lines later, PowerShell will report that the `Action` argument is null.
-
-```powershell
-Stop-ScheduledTask -TaskName "Sidecar Deck Agent" -ErrorAction SilentlyContinue
-Unregister-ScheduledTask -TaskName "Sidecar Deck Agent" -Confirm:$false -ErrorAction SilentlyContinue
-
-cd C:\SidecarDeckAgent
-
-$InstallDir = (Get-Location).Path
-$AgentExe = Join-Path $InstallDir ".venv\Scripts\sidecar-deck-agentw.exe"
-
-if (-not (Test-Path $AgentExe)) {
-  throw "Agent executable was not found at $AgentExe. Re-run the install step first."
-}
-
-$Action = New-ScheduledTaskAction `
-  -Execute $AgentExe `
-  -WorkingDirectory $InstallDir
-
-$Trigger = New-ScheduledTaskTrigger -AtLogOn
-$CurrentUser = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
-$Principal = New-ScheduledTaskPrincipal `
-  -UserId $CurrentUser `
-  -LogonType Interactive `
-  -RunLevel Limited
-
-$Settings = New-ScheduledTaskSettingsSet `
-  -AllowStartIfOnBatteries `
-  -DontStopIfGoingOnBatteries `
-  -RestartCount 999 `
-  -RestartInterval (New-TimeSpan -Minutes 1) `
-  -StartWhenAvailable
-
-Register-ScheduledTask `
-  -TaskName "Sidecar Deck Agent" `
-  -Description "Pushes Windows PC metrics to the Sidecar Deck dashboard." `
-  -Action $Action `
-  -Trigger $Trigger `
-  -Principal $Principal `
-  -Settings $Settings
-```
-
-The task uses `sidecar-deck-agentw.exe`, which runs without opening a console window. The task's working directory is set to the directory containing `.env`, so the installed agent can load its configuration.
+## 5. Verify the Startup Task
 
 Confirm the registered task is using the windowless executable:
 
@@ -159,23 +127,23 @@ Confirm the registered task is using the windowless executable:
 The `Execute` value should end with:
 
 ```text
-C:\SidecarDeckAgent\.venv\Scripts\sidecar-deck-agentw.exe
+%LOCALAPPDATA%\SidecarDeckAgent\.venv\Scripts\sidecar-deck-agentw.exe
 ```
 
-If it ends with `sidecar-deck-agent.exe`, recreate the task with the block above.
+If it ends with `sidecar-deck-agent.exe`, run `sidecar-deck-agentctl install` again so the task is recreated with the windowless executable.
 
 ## 6. Start and Verify the Task
 
 Start the task immediately:
 
 ```powershell
-Start-ScheduledTask -TaskName "Sidecar Deck Agent"
+sidecar-deck-agentctl start
 ```
 
 Check task state:
 
 ```powershell
-Get-ScheduledTask -TaskName "Sidecar Deck Agent" | Get-ScheduledTaskInfo
+sidecar-deck-agentctl status
 ```
 
 Useful fields:
@@ -197,20 +165,19 @@ Then confirm the dashboard is receiving current metrics from the configured host
 Stop the background agent:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Sidecar Deck Agent"
+sidecar-deck-agentctl stop
 ```
 
 Restart it:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Sidecar Deck Agent"
-Start-ScheduledTask -TaskName "Sidecar Deck Agent"
+sidecar-deck-agentctl restart
 ```
 
 Remove it:
 
 ```powershell
-Unregister-ScheduledTask -TaskName "Sidecar Deck Agent" -Confirm:$false
+sidecar-deck-agentctl uninstall
 ```
 
 ## 8. Troubleshooting
@@ -220,18 +187,40 @@ Unregister-ScheduledTask -TaskName "Sidecar Deck Agent" -Confirm:$false
 Run the agent in a visible console to see errors:
 
 ```powershell
-cd C:\SidecarDeckAgent
-.\.venv\Scripts\sidecar-deck-agent.exe
+sidecar-deck-agentctl run
 ```
 
 Common causes are a wrong dashboard URL, wrong token, missing virtual environment packages, or a `.env` file that was not created in the task's working directory.
+
+### Temperatures are missing
+
+Run the agent visibly with debug logs:
+
+```powershell
+notepad $env:LOCALAPPDATA\SidecarDeckAgent\.env
+sidecar-deck-agentctl run
+```
+
+Set:
+
+```env
+LOG_LEVEL=DEBUG
+```
+
+Enable LibreHardwareMonitor's remote web server and set:
+
+```env
+LIBRE_HARDWARE_MONITOR_API_URL=http://127.0.0.1:8085/data.json
+```
+
+When this URL is set, the agent uses the LibreHardwareMonitor API for temperatures instead of WMI.
 
 ### A terminal window opens repeatedly
 
 Stop the restart loop first:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Sidecar Deck Agent"
+sidecar-deck-agentctl stop
 ```
 
 Then inspect the task action:
@@ -241,22 +230,18 @@ Then inspect the task action:
   Format-List Execute,Arguments,WorkingDirectory
 ```
 
-If `Execute` ends with `sidecar-deck-agent.exe`, the task is using the console entry point. Recreate the task with the block in step 5 so it uses `sidecar-deck-agentw.exe`.
+If `Execute` ends with `sidecar-deck-agent.exe`, the task is using the console entry point. Run `sidecar-deck-agentctl install` again so it uses `sidecar-deck-agentw.exe`.
 
 If metrics are still appearing on the dashboard and you have an NVIDIA GPU, the agent is probably working but `nvidia-smi` is opening a short-lived console window during GPU polling. Upgrade to the latest agent build:
 
 ```powershell
-Stop-ScheduledTask -TaskName "Sidecar Deck Agent"
-cd C:\SidecarDeckAgent
-.\.venv\Scripts\python.exe -m pip install --upgrade --force-reinstall "git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=agent"
-Start-ScheduledTask -TaskName "Sidecar Deck Agent"
+sidecar-deck-agentctl update
 ```
 
-If `Execute` already ends with `sidecar-deck-agentw.exe` and metrics are not appearing, run the visible agent manually from `C:\SidecarDeckAgent` to see the startup error:
+If `Execute` already ends with `sidecar-deck-agentw.exe` and metrics are not appearing, run the visible agent manually to see the startup error:
 
 ```powershell
-cd C:\SidecarDeckAgent
-.\.venv\Scripts\sidecar-deck-agent.exe
+sidecar-deck-agentctl run
 ```
 
 Fix the visible error, then start the task again.

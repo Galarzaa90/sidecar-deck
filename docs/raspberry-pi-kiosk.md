@@ -76,7 +76,7 @@ curl http://homelab.local:8080/health
 Expected response:
 
 ```json
-{"status":"ok","demoMode":true}
+{"status":"ok"}
 ```
 
 If `homelab.local` does not resolve, use the homelab server IP address instead:

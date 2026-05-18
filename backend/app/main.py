@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -10,7 +8,6 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
-from .demo import run_demo_metrics
 from .models import MetricPayload, StatusEnvelope
 from .state import MetricsState
 
@@ -19,20 +16,7 @@ settings = get_settings()
 state = MetricsState(settings)
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    demo_task = asyncio.create_task(run_demo_metrics(state))
-    try:
-        yield
-    finally:
-        demo_task.cancel()
-        try:
-            await demo_task
-        except asyncio.CancelledError:
-            pass
-
-
-app = FastAPI(title="Sidecar Deck", version="0.1.0", lifespan=lifespan)
+app = FastAPI(title="Sidecar Deck", version="0.1.0")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -49,7 +33,7 @@ def require_token(authorization: str | None = Header(default=None), cfg: Setting
 
 @app.get("/health")
 async def health() -> dict[str, str | bool]:
-    return {"status": "ok", "demoMode": settings.demo_mode}
+    return {"status": "ok"}
 
 
 @app.get("/api/metrics/latest", response_model=StatusEnvelope)
@@ -64,7 +48,7 @@ async def metric_history() -> list[MetricPayload]:
 
 @app.post("/api/metrics", response_model=StatusEnvelope, dependencies=[Depends(require_token)])
 async def ingest_metrics(payload: MetricPayload) -> StatusEnvelope:
-    await state.set_metrics(payload, source="real")
+    await state.set_metrics(payload)
     return state.snapshot()
 
 

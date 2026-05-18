@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
-class FlexibleModel(BaseModel):
+class AgentModel(BaseModel):
     model_config = ConfigDict(extra="ignore")
 
 
-class CpuMetrics(FlexibleModel):
+class CpuMetrics(AgentModel):
     name: str | None = Field(default=None, max_length=128)
     usagePercent: float | None = Field(default=None, ge=0, le=100)
     temperatureC: float | None = None
@@ -28,14 +28,7 @@ class CpuMetrics(FlexibleModel):
         return value
 
 
-class MemoryMetrics(FlexibleModel):
-    usagePercent: float | None = Field(default=None, ge=0, le=100)
-    usedBytes: int | None = Field(default=None, ge=0)
-    totalBytes: int | None = Field(default=None, ge=0)
-    topProcesses: list["ProcessMemoryMetrics"] | None = None
-
-
-class ProcessMemoryMetrics(FlexibleModel):
+class ProcessMemoryMetrics(AgentModel):
     name: str = Field(min_length=1, max_length=128)
     pid: int | None = Field(default=None, ge=0, deprecated=True)
     pids: list[int] = Field(min_length=1)
@@ -52,7 +45,14 @@ class ProcessMemoryMetrics(FlexibleModel):
         return value
 
 
-class GpuMetrics(FlexibleModel):
+class MemoryMetrics(AgentModel):
+    usagePercent: float | None = Field(default=None, ge=0, le=100)
+    usedBytes: int | None = Field(default=None, ge=0)
+    totalBytes: int | None = Field(default=None, ge=0)
+    topProcesses: list[ProcessMemoryMetrics] | None = None
+
+
+class GpuMetrics(AgentModel):
     name: str | None = None
     usagePercent: float | None = Field(default=None, ge=0, le=100)
     temperatureC: float | None = None
@@ -60,29 +60,19 @@ class GpuMetrics(FlexibleModel):
     memoryTotalBytes: int | None = Field(default=None, ge=0)
 
 
-class TemperatureMetrics(FlexibleModel):
+class TemperatureMetrics(AgentModel):
     id: str = Field(min_length=1, max_length=128)
     label: str = Field(min_length=1, max_length=96)
     temperatureC: float = Field(ge=0, le=130)
     source: str | None = Field(default=None, max_length=64)
 
 
-class NetworkMetrics(FlexibleModel):
+class NetworkMetrics(AgentModel):
     rxBytesPerSecond: int | None = Field(default=None, ge=0)
     txBytesPerSecond: int | None = Field(default=None, ge=0)
 
 
-class DiskMetrics(FlexibleModel):
-    usagePercent: float | None = Field(default=None, ge=0, le=100)
-    usedBytes: int | None = Field(default=None, ge=0)
-    freeBytes: int | None = Field(default=None, ge=0)
-    totalBytes: int | None = Field(default=None, ge=0)
-    volumes: list["DiskVolumeMetrics"] | None = None
-    readBytesPerSecond: int | None = Field(default=None, ge=0)
-    writeBytesPerSecond: int | None = Field(default=None, ge=0)
-
-
-class DiskVolumeMetrics(FlexibleModel):
+class DiskVolumeMetrics(AgentModel):
     name: str = Field(min_length=1, max_length=32)
     mountpoint: str = Field(min_length=1, max_length=256)
     usagePercent: float | None = Field(default=None, ge=0, le=100)
@@ -91,14 +81,24 @@ class DiskVolumeMetrics(FlexibleModel):
     totalBytes: int | None = Field(default=None, ge=0)
 
 
-class PeripheralBatteryMetrics(FlexibleModel):
+class DiskMetrics(AgentModel):
+    usagePercent: float | None = Field(default=None, ge=0, le=100)
+    usedBytes: int | None = Field(default=None, ge=0)
+    freeBytes: int | None = Field(default=None, ge=0)
+    totalBytes: int | None = Field(default=None, ge=0)
+    volumes: list[DiskVolumeMetrics] | None = None
+    readBytesPerSecond: int | None = Field(default=None, ge=0)
+    writeBytesPerSecond: int | None = Field(default=None, ge=0)
+
+
+class PeripheralBatteryMetrics(AgentModel):
     id: str = Field(min_length=1, max_length=128)
     name: str = Field(min_length=1, max_length=96)
     batteryPercent: float = Field(ge=0, le=100)
     charging: bool = False
 
 
-class MetricPayload(FlexibleModel):
+class MetricPayload(AgentModel):
     host: str = Field(default="unknown", min_length=1, max_length=128)
     timestamp: datetime | None = None
     cpu: CpuMetrics | None = None
@@ -116,20 +116,3 @@ class MetricPayload(FlexibleModel):
         if isinstance(value, str) and value.endswith("Z"):
             return f"{value[:-1]}+00:00"
         return value
-
-    def with_timestamp(self) -> "MetricPayload":
-        if self.timestamp is not None:
-            return self
-        data = self.model_dump()
-        data["timestamp"] = datetime.now(timezone.utc)
-        return MetricPayload.model_validate(data)
-
-
-class StatusEnvelope(FlexibleModel):
-    status: str
-    serverTime: datetime
-    ageSeconds: float | None
-    staleAfterSeconds: int
-    offlineAfterSeconds: int
-    latest: MetricPayload | None
-    history: list[MetricPayload]

@@ -15,7 +15,10 @@ export interface MemoryMetrics {
 
 export interface ProcessMemoryMetrics {
   name: string;
-  pid: number;
+  /** @deprecated Use pids instead. */
+  pid?: number | null;
+  pids: number[];
+  processCount?: number | null;
   rssBytes: number;
   usagePercent?: number | null;
 }
@@ -32,6 +35,7 @@ export interface TemperatureMetrics {
   id: string;
   label: string;
   temperatureC: number;
+  source?: string | null;
 }
 
 export interface NetworkMetrics {

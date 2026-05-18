@@ -11,12 +11,13 @@ dynamic = ["dependencies"]
 
 [project.scripts]
 sidecar-deck-agent = "pc_agent:main"
+sidecar-deck-agentctl = "sidecar_deck_agent_ctl:main"
 
 [project.gui-scripts]
 sidecar-deck-agentw = "pc_agent:main"
 
 [tool.setuptools]
-py-modules = ["pc_agent"]
+py-modules = ["agent_models", "pc_agent", "sidecar_deck_agent_ctl"]
 
 [tool.setuptools.dynamic]
 dependencies = { file = ["requirements.txt"] }

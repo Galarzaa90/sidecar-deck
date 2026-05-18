@@ -15,16 +15,13 @@ class MetricsState:
         self.latest: MetricPayload | None = None
         self.history: Deque[MetricPayload] = deque()
         self.latest_received_at: datetime | None = None
-        self.real_metrics_received = False
         self._condition = asyncio.Condition()
 
-    async def set_metrics(self, payload: MetricPayload, *, source: str) -> None:
+    async def set_metrics(self, payload: MetricPayload) -> None:
         stamped = payload.with_timestamp()
         async with self._condition:
             self.latest = stamped
             self.latest_received_at = datetime.now(timezone.utc)
-            if source == "real":
-                self.real_metrics_received = True
             self.history.append(stamped)
             self._trim_history()
             self._condition.notify_all()

@@ -1,33 +1,80 @@
 # Sidecar Deck
 
-Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The homelab server runs the FastAPI backend and React frontend as separate Docker containers in one Compose project. The Raspberry Pi only opens the dashboard URL in Chromium kiosk mode.
+Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The homelab server runs the backend API and dashboard frontend, while a Windows PC agent pushes live machine metrics. The Raspberry Pi only opens the dashboard URL in Chromium kiosk mode.
 
-<img width="1270" height="360" alt="image" src="https://github.com/user-attachments/assets/ca66d608-d94c-4d7a-a10e-d76822393365" />
+<img width="1270" height="360" alt="Sidecar Deck dashboard" src="https://github.com/user-attachments/assets/ca66d608-d94c-4d7a-a10e-d76822393365" />
 
+## Project Layout
 
-## Run With Docker
+- [agent](agent/README.md): Windows Python process that collects host metrics and posts them to the backend.
+- [backend](backend/README.md): FastAPI service that stores the latest metrics, keeps short history, and streams updates over WebSocket.
+- [frontend](frontend/README.md): React/Vite dashboard optimized for the sidecar display.
+- [docs](docs): setup notes for Raspberry Pi kiosk mode and Windows agent startup.
+
+## How It Fits Together
+
+1. The backend exposes `/api/metrics`, `/api/metrics/latest`, `/api/metrics/history`, `/health`, and `/ws`.
+2. The Windows agent reads local CPU, RAM, network, disk, uptime, hostname, temperature, and optional GPU data.
+3. The agent posts metrics to the backend using a bearer token.
+4. The frontend reads the latest state and listens on `/ws` so the kiosk display updates live.
+5. The Raspberry Pi launches Chromium directly against the frontend URL.
+
+The backend does not generate placeholder metrics. The dashboard stays in a waiting state until a real agent posts data.
+
+## Quick Start
+
+Run the backend:
 
 ```bash
-cp backend/.env.example backend/.env
-docker compose --env-file backend/.env up --build
+cd backend
+cp .env.example .env
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements-dev.txt
+uvicorn app.main:app --reload --port 8080
 ```
 
-Open:
+Run the frontend:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Open the dashboard:
 
 ```text
-http://homelab.local:8080
+http://localhost:5173
 ```
 
-The app runs in demo mode by default, so the dashboard shows changing fake metrics before a real PC agent is connected.
+For host metrics from a Windows machine, install the [agent](agent/README.md):
 
-The standalone frontend image serves the built Vite app through nginx and proxies same-origin API/WebSocket traffic to the backend. In Compose, it reaches the backend at `http://backend:8080`:
+```powershell
+sidecar-deck-agentctl install --dashboard-url http://homelab.local:8080 --metrics-token change-me --hostname gaming-pc
+```
+
+Use `sidecar-deck-agentctl start`, `stop`, `restart`, `status`, `update`, and `uninstall` to manage the Windows background task.
+
+## Docker Images
+
+Build and run the backend image:
+
+```bash
+docker build -t sidecar-deck-backend -f backend/Dockerfile .
+docker run --rm -p 8080:8080 --env-file backend/.env.example sidecar-deck-backend
+```
+
+Build and run the standalone frontend image:
 
 ```bash
 docker build -t sidecar-deck-frontend -f frontend/Dockerfile .
 docker run --rm -p 8081:8080 -e BACKEND_URL=http://host.docker.internal:8080 sidecar-deck-frontend
 ```
 
-## API
+The frontend image serves the built Vite app through nginx and proxies same-origin API/WebSocket traffic to `BACKEND_URL`.
+
+## API Summary
 
 Health:
 
@@ -68,45 +115,9 @@ Live dashboard clients connect to:
 ws://<server>:8080/ws
 ```
 
-## Windows PC Agent
+## Kiosk Setup
 
-The first agent is a Python host process so it can access local Windows metrics. It uses `psutil` for CPU, RAM, network, disk, uptime, and hostname. Temperature readings are reported through the top-level `temperatures` list, and GPU fields can be added through LibreHardwareMonitor, OpenHardwareMonitor, or vendor tooling without changing the backend API.
-
-```powershell
-cd agent
-py -m venv .venv
-.\.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
-copy .env.example .env
-notepad .env
-python pc_agent.py
-```
-
-Or install the agent directly from Git:
-
-```powershell
-mkdir C:\SidecarDeckAgent
-cd C:\SidecarDeckAgent
-py -m venv .venv
-.\.venv\Scripts\python.exe -m pip install "git+https://github.com/<owner>/pc-dashboard.git#subdirectory=agent"
-notepad .env
-.\.venv\Scripts\sidecar-deck-agent.exe
-```
-
-Required agent environment:
-
-```env
-DASHBOARD_BASE_URL=http://homelab.local:8080
-METRICS_TOKEN=change-me
-PUSH_INTERVAL_SECONDS=1
-HOSTNAME=gaming-pc
-```
-
-For background startup on Windows, see [docs/windows-agent-startup.md](docs/windows-agent-startup.md).
-
-## Raspberry Pi Kiosk
-
-Example Chromium launch:
+Example Chromium launch on the Raspberry Pi:
 
 ```bash
 chromium-browser --kiosk http://homelab.local:8080
@@ -114,26 +125,4 @@ chromium-browser --kiosk http://homelab.local:8080
 
 The UI is designed first for `1920x480` with no normal-operation scrolling. Wider or normal desktop browser sizes get a simple responsive fallback for testing.
 
-For full Raspberry Pi preparation steps, see [docs/raspberry-pi-kiosk.md](docs/raspberry-pi-kiosk.md).
-
-## Local Development
-
-Backend:
-
-```bash
-cd backend
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements-dev.txt
-uvicorn app.main:app --reload --port 8080
-pytest
-```
-
-Frontend:
-
-```bash
-cd frontend
-npm install
-npm run dev
-npm run build
-```
+For full Raspberry Pi preparation steps, see [docs/raspberry-pi-kiosk.md](docs/raspberry-pi-kiosk.md). For Windows background startup, see [docs/windows-agent-startup.md](docs/windows-agent-startup.md).

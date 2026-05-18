@@ -72,16 +72,39 @@ function temperatureItems(metric?: MetricPayload | null): TemperatureMetrics[] {
 
   const fallback: TemperatureMetrics[] = [];
   if (metric?.cpu?.temperatureC != null) {
-    fallback.push({ id: 'cpu', label: 'CPU', temperatureC: metric.cpu.temperatureC });
+    fallback.push({ id: 'cpu', label: 'CPU', temperatureC: metric.cpu.temperatureC, source: 'payload' });
   }
   if (metric?.gpu?.temperatureC != null) {
-    fallback.push({ id: 'gpu', label: 'GPU', temperatureC: metric.gpu.temperatureC });
+    fallback.push({ id: 'gpu', label: 'GPU', temperatureC: metric.gpu.temperatureC, source: 'payload' });
   }
   return fallback;
 }
 
+function pagedTemperatureItems(
+  sensors: TemperatureMetrics[],
+  date: Date,
+  pageSize = 3,
+  pageMs = 8000,
+): { items: TemperatureMetrics[]; page: number; pageCount: number } {
+  const ordered = [...sensors].sort((a, b) => b.temperatureC - a.temperatureC);
+  if (ordered.length <= pageSize) return { items: ordered, page: 0, pageCount: 1 };
+
+  const pageCount = Math.ceil(ordered.length / pageSize);
+  const page = Math.floor(date.getTime() / pageMs) % pageCount;
+  return {
+    items: ordered.slice(page * pageSize, page * pageSize + pageSize),
+    page,
+    pageCount,
+  };
+}
+
 function processLabel(name: string): string {
   return name.replace(/\.exe$/i, '');
+}
+
+function processDisplayLabel(name: string, processCount?: number | null): string {
+  const label = processLabel(name);
+  return processCount != null && processCount > 1 ? `${label} (${processCount})` : label;
 }
 
 function processShare(processBytes: number, topBytes: number): number {
@@ -256,6 +279,7 @@ export default function App() {
     : null;
   const batteryList = batteries.length ? [...batteries].sort((a, b) => a.batteryPercent - b.batteryPercent).slice(0, 4) : [];
   const thermals = temperatureItems(latest);
+  const visibleThermals = pagedTemperatureItems(thermals, now);
   const diskVolumes = latest?.disk?.volumes?.length
     ? latest.disk.volumes
     : latest?.disk
@@ -281,15 +305,24 @@ export default function App() {
             sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'High Temperature' : 'Thermal Headroom'}
           >
             {thermals.length > 0 ? (
-              <RankedMeterList
-                items={thermals.map((sensor) => ({
-                  id: sensor.id,
-                  label: sensor.label,
-                  value: number1(sensor.temperatureC, 'C'),
-                  percent: sensor.temperatureC,
-                }))}
-                showRank={false}
-              />
+              <>
+                <RankedMeterList
+                  items={visibleThermals.items.map((sensor) => ({
+                    id: sensor.id,
+                    label: sensor.label,
+                    value: number1(sensor.temperatureC, 'C'),
+                    percent: sensor.temperatureC,
+                  }))}
+                  showRank={false}
+                />
+                {visibleThermals.pageCount > 1 ? (
+                  <div className="thermal-page-dots" aria-label={`Temperature page ${visibleThermals.page + 1} of ${visibleThermals.pageCount}`}>
+                    {Array.from({ length: visibleThermals.pageCount }, (_, index) => (
+                      <i key={index} className={index === visibleThermals.page ? 'active' : undefined} />
+                    ))}
+                  </div>
+                ) : null}
+              </>
             ) : (
               <span className="empty-detail">Temperature sensors unavailable</span>
             )}
@@ -425,8 +458,8 @@ export default function App() {
                 items={latest?.memory?.topProcesses?.slice(0, 3).map((process, _index, processes) => {
                   const topBytes = processes[0]?.rssBytes ?? 0;
                   return {
-                    id: `${process.pid}-${process.name}`,
-                    label: processLabel(process.name),
+                    id: `${process.pids.join('-')}-${process.name}`,
+                    label: processDisplayLabel(process.name, process.processCount ?? process.pids?.length),
                     value: bytes(process.rssBytes),
                     percent: processShare(process.rssBytes, topBytes),
                   };

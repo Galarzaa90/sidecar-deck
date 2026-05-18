@@ -15,7 +15,6 @@ class Settings(BaseSettings):
     metrics_stale_seconds: int = Field(default=5, alias="METRICS_STALE_SECONDS")
     metrics_offline_seconds: int = Field(default=15, alias="METRICS_OFFLINE_SECONDS")
     history_seconds: int = Field(default=600, alias="HISTORY_SECONDS")
-    demo_mode: bool = Field(default=True, alias="DEMO_MODE")
     static_dir: Path = Field(default=Path("/app/static"), alias="STATIC_DIR")
 
 
