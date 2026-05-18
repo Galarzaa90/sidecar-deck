@@ -39,12 +39,17 @@ _logitech_battery_checked_at = 0.0
 _logitech_battery_cache: list[dict[str, Any]] = []
 _bluetooth_battery_checked_at = 0.0
 _bluetooth_battery_cache: list[dict[str, Any]] = []
+IGNORED_TOP_MEMORY_PROCESS_NAMES = {"memcompression"}
 
 
 def hidden_creation_flags() -> int:
     if os.name == "nt":
         return getattr(subprocess, "CREATE_NO_WINDOW", 0)
     return 0
+
+
+def should_ignore_top_memory_process(name: str) -> bool:
+    return name.strip().lower() in IGNORED_TOP_MEMORY_PROCESS_NAMES
 
 
 def metrics_url(base_url: str) -> str:
@@ -310,6 +315,9 @@ def top_memory_processes(total_memory: int, limit: int = 3) -> list[dict[str, An
                 continue
 
             name = info.get("name") or f"pid {info.get('pid')}"
+            if should_ignore_top_memory_process(str(name)):
+                continue
+
             processes.append(
                 {
                     "name": str(name)[:128],
