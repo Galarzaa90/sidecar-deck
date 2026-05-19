@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     metrics_offline_seconds: int = Field(default=15, alias="METRICS_OFFLINE_SECONDS")
     history_seconds: int = Field(default=600, alias="HISTORY_SECONDS")
     static_dir: Path = Field(default=Path("/app/static"), alias="STATIC_DIR")
+    weather_location: str = Field(default="", alias="WEATHER_LOCATION")
 
 
 @lru_cache

@@ -30,9 +30,11 @@ METRICS_TOKEN=change-me
 METRICS_STALE_SECONDS=5
 METRICS_OFFLINE_SECONDS=15
 HISTORY_SECONDS=600
+WEATHER_LOCATION=City, Region
 ```
 
 `METRICS_TOKEN` must match the token used by the agent.
+`WEATHER_LOCATION` is optional. When set, the standby dashboard uses it to show current weather and a 5 day forecast.
 
 ## API
 
@@ -40,6 +42,7 @@ HISTORY_SECONDS=600
 curl http://localhost:8080/health
 curl http://localhost:8080/api/metrics/latest
 curl http://localhost:8080/api/metrics/history
+curl http://localhost:8080/api/weather
 ```
 
 Push metrics:

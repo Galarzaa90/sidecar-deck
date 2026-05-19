@@ -1,10 +1,10 @@
-import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, Cpu, Gauge, HardDrive, MemoryStick, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, CalendarDays, CloudSun, Cpu, Gauge, HardDrive, MemoryStick, MonitorOff, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
 import { RankedMeterList } from './RankedMeterList';
 import { Sparkline } from './Sparkline';
-import type { MetricPayload, StatusEnvelope, TemperatureMetrics } from './types';
+import type { MetricPayload, StatusEnvelope, TemperatureMetrics, WeatherEnvelope } from './types';
 
 interface CompactPanel {
   key: string;
@@ -20,6 +20,14 @@ const emptyEnvelope: StatusEnvelope = {
   offlineAfterSeconds: 15,
   latest: null,
   history: [],
+};
+
+const emptyWeather: WeatherEnvelope = {
+  status: 'unconfigured',
+  locationLabel: null,
+  updatedAt: new Date().toISOString(),
+  current: null,
+  forecast: [],
 };
 
 function wsUrl(): string {
@@ -56,6 +64,38 @@ function useMetrics() {
   }, []);
 
   return { envelope, connected };
+}
+
+function useWeather() {
+  const [weather, setWeather] = useState<WeatherEnvelope>(emptyWeather);
+  const [weatherError, setWeatherError] = useState(false);
+
+  useEffect(() => {
+    let stopped = false;
+
+    const loadWeather = async () => {
+      try {
+        const response = await fetch('/api/weather', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`weather request failed: ${response.status}`);
+        const nextWeather = await response.json();
+        if (!stopped) {
+          setWeather(nextWeather);
+          setWeatherError(false);
+        }
+      } catch {
+        if (!stopped) setWeatherError(true);
+      }
+    };
+
+    loadWeather();
+    const timer = window.setInterval(loadWeather, 10 * 60 * 1000);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+    };
+  }, []);
+
+  return { weather, weatherError };
 }
 
 function series(history: MetricPayload[], selector: (item: MetricPayload) => number | null | undefined) {
@@ -114,6 +154,19 @@ function uptime(seconds?: number | null): string {
   if (days > 0) return `${days}d ${hours}h`;
   if (hours > 0) return `${hours}h ${minutes}m`;
   return `${minutes}m`;
+}
+
+function dateLabel(date: Date): string {
+  return date.toLocaleDateString([], { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function forecastDayLabel(value: string): string {
+  const date = new Date(`${value}T12:00:00`);
+  return date.toLocaleDateString([], { weekday: 'short' });
+}
+
+function temperature(value?: number | null): string {
+  return value == null || Number.isNaN(value) ? '--' : `${Math.round(value)}C`;
 }
 
 function visibleCompactPanels(panels: CompactPanel[], date: Date): CompactPanel[] {
@@ -233,8 +286,95 @@ function CompactCard({
   );
 }
 
+function StandbyDashboard({
+  envelope,
+  now,
+  weather,
+  weatherError,
+}: {
+  envelope: StatusEnvelope;
+  now: Date;
+  weather: WeatherEnvelope;
+  weatherError: boolean;
+}) {
+  const hasSeenAgent = envelope.status === 'offline' && envelope.ageSeconds != null;
+  const connectionValue = hasSeenAgent ? age(envelope.ageSeconds) : '--';
+  const connectionSub = hasSeenAgent ? 'Last seen' : 'No metrics received yet';
+  const weatherCurrent = weather.current;
+
+  return (
+    <div className="standby-shell">
+      <section className="standby-card standby-card-large" style={{ '--tone': '#ff6b6b' } as CSSProperties}>
+        <div className="standby-top">
+          <div className="icon-wrap"><MonitorOff size={30} /></div>
+          <div>
+            <p className="label">PC Standby</p>
+            <p className="subtle">{connectionSub}</p>
+          </div>
+        </div>
+        <div className="standby-metric">
+          <span>{envelope.status === 'waiting' ? 'Waiting' : connectionValue}</span>
+        </div>
+        <p className="standby-note">
+          {envelope.status === 'waiting'
+            ? 'The dashboard is ready for the first agent update.'
+            : 'The PC is off or the agent connection was lost.'}
+        </p>
+      </section>
+
+      <section className="standby-card" style={{ '--tone': '#78a6ff' } as CSSProperties}>
+        <div className="standby-top">
+          <div className="icon-wrap"><CalendarDays size={30} /></div>
+          <div>
+            <p className="label">Clock</p>
+            <p className="subtle">{dateLabel(now)}</p>
+          </div>
+        </div>
+        <div className="standby-clock">{clock(now)}</div>
+        <p className="standby-note">{now.toLocaleDateString([], { year: 'numeric', month: 'long', day: 'numeric' })}</p>
+      </section>
+
+      <section className="standby-card standby-weather" style={{ '--tone': '#35df87' } as CSSProperties}>
+        <div className="standby-top">
+          <div className="icon-wrap"><CloudSun size={30} /></div>
+          <div>
+            <p className="label">Weather</p>
+            <p className="subtle">{weather.locationLabel ?? 'Set WEATHER_LOCATION'}</p>
+          </div>
+        </div>
+        {weather.status === 'ok' && weatherCurrent ? (
+          <>
+            <div className="weather-current">
+              <span className="weather-temp">{temperature(weatherCurrent.temperatureC)}</span>
+              <span className="weather-condition">{weatherCurrent.condition}</span>
+            </div>
+            <div className="forecast-list">
+              {weather.forecast.slice(0, 5).map((day) => (
+                <div className="forecast-row" key={day.date}>
+                  <span>{forecastDayLabel(day.date)}</span>
+                  <span>{day.condition}</span>
+                  <strong>{temperature(day.temperatureMaxC)} / {temperature(day.temperatureMinC)}</strong>
+                </div>
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="standby-note">
+            {weatherError
+              ? 'Weather is temporarily unavailable.'
+              : weather.status === 'not_found'
+                ? 'Weather location was not found.'
+                : 'Weather location is not configured.'}
+          </p>
+        )}
+      </section>
+    </div>
+  );
+}
+
 export default function App() {
   const { envelope, connected } = useMetrics();
+  const { weather, weatherError } = useWeather();
   const [now, setNow] = useState(new Date());
 
   useEffect(() => {
@@ -244,6 +384,7 @@ export default function App() {
 
   const latest = envelope.latest;
   const displayStatus = connected ? envelope.status : 'disconnected';
+  const isStandby = envelope.status === 'waiting' || envelope.status === 'offline';
   const history = envelope.history;
   const cpuSeries = useMemo(() => series(history, (item) => item.cpu?.usagePercent), [history]);
   const ramSeries = useMemo(() => series(history, (item) => item.memory?.usagePercent), [history]);
@@ -411,8 +552,11 @@ export default function App() {
   );
 
   return (
-    <main className={`dashboard state-${displayStatus}`}>
-      <div className="dashboard-shell">
+    <main className={`dashboard state-${displayStatus}${isStandby ? ' state-standby' : ''}`}>
+      {isStandby ? (
+        <StandbyDashboard envelope={envelope} now={now} weather={weather} weatherError={weatherError} />
+      ) : (
+        <div className="dashboard-shell">
         <StatCard
           tone="#20c7ff"
           icon={<Cpu size={28} />}
@@ -480,6 +624,7 @@ export default function App() {
           ))}
         </div>
       </div>
+      )}
     </main>
   );
 }

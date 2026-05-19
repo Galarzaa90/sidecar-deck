@@ -92,3 +92,28 @@ export interface StatusEnvelope {
   latest?: MetricPayload | null;
   history: MetricPayload[];
 }
+
+export interface CurrentWeather {
+  temperatureC?: number | null;
+  apparentTemperatureC?: number | null;
+  weatherCode?: number | null;
+  condition: string;
+  windKph?: number | null;
+}
+
+export interface ForecastDay {
+  date: string;
+  condition: string;
+  weatherCode?: number | null;
+  temperatureMinC?: number | null;
+  temperatureMaxC?: number | null;
+  precipitationChancePercent?: number | null;
+}
+
+export interface WeatherEnvelope {
+  status: 'ok' | 'unconfigured' | 'not_found';
+  locationLabel?: string | null;
+  updatedAt: string;
+  current?: CurrentWeather | null;
+  forecast: ForecastDay[];
+}

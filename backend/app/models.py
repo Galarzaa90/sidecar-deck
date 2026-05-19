@@ -134,3 +134,28 @@ class StatusEnvelope(FlexibleModel):
     offlineAfterSeconds: int
     latest: MetricPayload | None
     history: list[MetricPayload]
+
+
+class CurrentWeather(FlexibleModel):
+    temperatureC: float | None = None
+    apparentTemperatureC: float | None = None
+    weatherCode: int | None = None
+    condition: str
+    windKph: float | None = Field(default=None, ge=0)
+
+
+class ForecastDay(FlexibleModel):
+    date: str
+    condition: str
+    weatherCode: int | None = None
+    temperatureMinC: float | None = None
+    temperatureMaxC: float | None = None
+    precipitationChancePercent: int | None = Field(default=None, ge=0, le=100)
+
+
+class WeatherEnvelope(FlexibleModel):
+    status: str
+    locationLabel: str | None = None
+    updatedAt: datetime
+    current: CurrentWeather | None = None
+    forecast: list[ForecastDay] = Field(default_factory=list)

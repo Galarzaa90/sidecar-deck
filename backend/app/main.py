@@ -8,8 +8,9 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import Settings, get_settings
-from .models import MetricPayload, StatusEnvelope
+from .models import MetricPayload, StatusEnvelope, WeatherEnvelope
 from .state import MetricsState
+from .weather import weather_for_location
 
 
 settings = get_settings()
@@ -44,6 +45,11 @@ async def latest_metrics() -> StatusEnvelope:
 @app.get("/api/metrics/history", response_model=list[MetricPayload])
 async def metric_history() -> list[MetricPayload]:
     return list(state.history)
+
+
+@app.get("/api/weather", response_model=WeatherEnvelope)
+async def weather(cfg: Settings = Depends(get_settings)) -> WeatherEnvelope:
+    return await weather_for_location(cfg.weather_location)
 
 
 @app.post("/api/metrics", response_model=StatusEnvelope, dependencies=[Depends(require_token)])

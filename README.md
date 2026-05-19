@@ -13,13 +13,14 @@ Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The home
 
 ## How It Fits Together
 
-1. The backend exposes `/api/metrics`, `/api/metrics/latest`, `/api/metrics/history`, `/health`, and `/ws`.
+1. The backend exposes `/api/metrics`, `/api/metrics/latest`, `/api/metrics/history`, `/api/weather`, `/health`, and `/ws`.
 2. The Windows agent reads local CPU, RAM, network, disk, uptime, hostname, temperature, and optional GPU data.
 3. The agent posts metrics to the backend using a bearer token.
 4. The frontend reads the latest state and listens on `/ws` so the kiosk display updates live.
 5. The Raspberry Pi launches Chromium directly against the frontend URL.
 
 The backend does not generate placeholder metrics. The dashboard stays in a waiting state until a real agent posts data.
+When the agent is waiting or offline, the dashboard switches to standby mode with connection status, clock, and optional weather from `WEATHER_LOCATION`.
 
 ## Quick Start
 
@@ -64,6 +65,8 @@ Build and run the backend image:
 docker build -t sidecar-deck-backend -f backend/Dockerfile .
 docker run --rm -p 8080:8080 --env-file backend/.env.example sidecar-deck-backend
 ```
+
+Set `WEATHER_LOCATION` in the backend environment, such as `WEATHER_LOCATION=Tucson, AZ`, to enable standby weather.
 
 Build and run the standalone frontend image:
 
