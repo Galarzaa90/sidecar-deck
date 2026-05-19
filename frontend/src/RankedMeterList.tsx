@@ -1,6 +1,8 @@
+import type { ReactNode } from 'react';
+
 export interface RankedMeterItem {
   id: string;
-  label: string;
+  label: ReactNode;
   value: string;
   percent: number;
 }

@@ -124,9 +124,14 @@ function processLabel(name: string): string {
   return name.replace(/\.exe$/i, '');
 }
 
-function processDisplayLabel(name: string, processCount?: number | null): string {
+function processDisplayLabel(name: string, processCount?: number | null): ReactNode {
   const label = processLabel(name);
-  return processCount != null && processCount > 1 ? `${label} (${processCount})` : label;
+  return (
+    <>
+      {label}
+      {processCount != null && processCount > 1 ? <span className="process-count">{processCount}</span> : null}
+    </>
+  );
 }
 
 function processShare(processBytes: number, topBytes: number): number {
@@ -583,7 +588,7 @@ export default function App() {
           <div className="ram-processes">
             {(latest?.memory?.topProcesses ?? []).length > 0 ? (
               <RankedMeterList
-                items={latest?.memory?.topProcesses?.slice(0, 3).map((process, _index, processes) => {
+                items={latest?.memory?.topProcesses?.slice(0, 5).map((process, _index, processes) => {
                   const topBytes = processes[0]?.rssBytes ?? 0;
                   return {
                     id: `${process.pids.join('-')}-${process.name}`,

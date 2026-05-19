@@ -222,6 +222,21 @@ body {
   color: #dfe6f2;
 }
 
+.process-count {
+  margin-left: 6px;
+  color: #8995a8;
+  font-size: 0.82em;
+  font-weight: 700;
+}
+
+.process-count::before {
+  content: "(";
+}
+
+.process-count::after {
+  content: ")";
+}
+
 .meter-value,
 .empty-detail {
   color: #8995a8;

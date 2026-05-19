@@ -559,7 +559,7 @@ def disk_usage_metrics() -> DiskMetrics:
     )
 
 
-def top_memory_processes(total_memory: int, limit: int = 3) -> list[ProcessMemoryMetrics]:
+def top_memory_processes(total_memory: int, limit: int = 10) -> list[ProcessMemoryMetrics]:
     grouped: dict[str, dict[str, Any]] = {}
     for process in psutil.process_iter(["pid", "name", "memory_info"]):
         try:
