@@ -13,6 +13,118 @@ GEOCODING_URL = "https://geocoding-api.open-meteo.com/v1/search"
 FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
 
 
+COUNTRY_HINTS = {
+    "mexico": "MX",
+    "mx": "MX",
+    "united states": "US",
+    "usa": "US",
+    "us": "US",
+}
+
+US_STATE_HINTS = {
+    "alabama": "Alabama",
+    "al": "Alabama",
+    "alaska": "Alaska",
+    "ak": "Alaska",
+    "arizona": "Arizona",
+    "az": "Arizona",
+    "arkansas": "Arkansas",
+    "ar": "Arkansas",
+    "california": "California",
+    "ca": "California",
+    "colorado": "Colorado",
+    "co": "Colorado",
+    "connecticut": "Connecticut",
+    "ct": "Connecticut",
+    "delaware": "Delaware",
+    "de": "Delaware",
+    "florida": "Florida",
+    "fl": "Florida",
+    "georgia": "Georgia",
+    "ga": "Georgia",
+    "hawaii": "Hawaii",
+    "hi": "Hawaii",
+    "idaho": "Idaho",
+    "id": "Idaho",
+    "illinois": "Illinois",
+    "il": "Illinois",
+    "indiana": "Indiana",
+    "in": "Indiana",
+    "iowa": "Iowa",
+    "ia": "Iowa",
+    "kansas": "Kansas",
+    "ks": "Kansas",
+    "kentucky": "Kentucky",
+    "ky": "Kentucky",
+    "louisiana": "Louisiana",
+    "la": "Louisiana",
+    "maine": "Maine",
+    "me": "Maine",
+    "maryland": "Maryland",
+    "md": "Maryland",
+    "massachusetts": "Massachusetts",
+    "ma": "Massachusetts",
+    "michigan": "Michigan",
+    "mi": "Michigan",
+    "minnesota": "Minnesota",
+    "mn": "Minnesota",
+    "mississippi": "Mississippi",
+    "ms": "Mississippi",
+    "missouri": "Missouri",
+    "mo": "Missouri",
+    "montana": "Montana",
+    "mt": "Montana",
+    "nebraska": "Nebraska",
+    "ne": "Nebraska",
+    "nevada": "Nevada",
+    "nv": "Nevada",
+    "new hampshire": "New Hampshire",
+    "nh": "New Hampshire",
+    "new jersey": "New Jersey",
+    "nj": "New Jersey",
+    "new mexico": "New Mexico",
+    "nm": "New Mexico",
+    "new york": "New York",
+    "ny": "New York",
+    "north carolina": "North Carolina",
+    "nc": "North Carolina",
+    "north dakota": "North Dakota",
+    "nd": "North Dakota",
+    "ohio": "Ohio",
+    "oh": "Ohio",
+    "oklahoma": "Oklahoma",
+    "ok": "Oklahoma",
+    "oregon": "Oregon",
+    "or": "Oregon",
+    "pennsylvania": "Pennsylvania",
+    "pa": "Pennsylvania",
+    "rhode island": "Rhode Island",
+    "ri": "Rhode Island",
+    "south carolina": "South Carolina",
+    "sc": "South Carolina",
+    "south dakota": "South Dakota",
+    "sd": "South Dakota",
+    "tennessee": "Tennessee",
+    "tn": "Tennessee",
+    "texas": "Texas",
+    "tx": "Texas",
+    "utah": "Utah",
+    "ut": "Utah",
+    "vermont": "Vermont",
+    "vt": "Vermont",
+    "virginia": "Virginia",
+    "va": "Virginia",
+    "washington": "Washington",
+    "wa": "Washington",
+    "west virginia": "West Virginia",
+    "wv": "West Virginia",
+    "wisconsin": "Wisconsin",
+    "wi": "Wisconsin",
+    "wyoming": "Wyoming",
+    "wy": "Wyoming",
+}
+
+
 WEATHER_CODES = {
     0: "Clear",
     1: "Mostly Clear",
@@ -45,6 +157,62 @@ WEATHER_CODES = {
 }
 
 
+def normalize_hint(value: str) -> str:
+    return " ".join(value.strip().lower().replace(".", "").split())
+
+
+def location_searches(location: str) -> list[tuple[str, list[str]]]:
+    clean_location = " ".join(location.replace(",", " , ").split()).replace(" ,", ",")
+    searches: list[tuple[str, list[str]]] = [(clean_location, [])]
+
+    comma_parts = [part.strip() for part in clean_location.split(",") if part.strip()]
+    if len(comma_parts) > 1:
+        searches.append((comma_parts[0], comma_parts[1:]))
+
+    words = clean_location.replace(",", " ").split()
+    for split_index in range(len(words) - 1, 0, -1):
+        searches.append((" ".join(words[:split_index]), [" ".join(words[split_index:])]))
+
+    unique_searches: list[tuple[str, list[str]]] = []
+    seen = set()
+    for name, hints in searches:
+        normalized = (normalize_hint(name), tuple(normalize_hint(hint) for hint in hints))
+        if name and normalized not in seen:
+            unique_searches.append((name, hints))
+            seen.add(normalized)
+    return unique_searches
+
+
+def score_geocode_result(result: dict[str, Any], hints: list[str]) -> int:
+    score = 0
+    admin = normalize_hint(str(result.get("admin1") or ""))
+    country_code = normalize_hint(str(result.get("country_code") or ""))
+
+    for hint in hints:
+        normalized_hint = normalize_hint(hint)
+        if not normalized_hint:
+            continue
+
+        country_hint = COUNTRY_HINTS.get(normalized_hint)
+        state_hint = US_STATE_HINTS.get(normalized_hint)
+        if country_hint and country_code == normalize_hint(country_hint):
+            score += 4
+        if state_hint and admin == normalize_hint(state_hint):
+            score += 5
+        if admin == normalized_hint:
+            score += 5
+        elif normalized_hint in admin or admin in normalized_hint:
+            score += 2
+
+    return score
+
+
+def select_geocode_result(results: list[dict[str, Any]], hints: list[str]) -> dict[str, Any] | None:
+    if not results:
+        return None
+    return max(results, key=lambda result: score_geocode_result(result, hints))
+
+
 def weather_condition(code: Any) -> str:
     if code is None:
         return "Unavailable"
@@ -66,14 +234,19 @@ async def weather_for_location(location: str) -> WeatherEnvelope:
 
     try:
         async with httpx.AsyncClient(timeout=5) as client:
-            geocode_response = await client.get(
-                GEOCODING_URL,
-                params={"name": clean_location, "count": 1, "language": "en", "format": "json"},
-            )
-            geocode_response.raise_for_status()
-            geocode_data = geocode_response.json()
-            result = (geocode_data.get("results") or [None])[0]
-            if not result:
+            result = None
+            for search_name, hints in location_searches(clean_location):
+                geocode_response = await client.get(
+                    GEOCODING_URL,
+                    params={"name": search_name, "count": 10, "language": "en", "format": "json"},
+                )
+                geocode_response.raise_for_status()
+                geocode_data = geocode_response.json()
+                result = select_geocode_result(geocode_data.get("results") or [], hints)
+                if result:
+                    break
+
+            if result is None:
                 return WeatherEnvelope(status="not_found", locationLabel=clean_location, updatedAt=datetime.now(timezone.utc))
 
             forecast_response = await client.get(

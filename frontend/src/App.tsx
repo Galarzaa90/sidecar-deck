@@ -1,7 +1,7 @@
 import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, CalendarDays, CloudSun, Cpu, Gauge, HardDrive, MemoryStick, MonitorOff, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
-import { age, bytes, clock, gbPair, number1, percent, throughput } from './format';
+import { age, bytes, clock, coarseAge, gbPair, number1, percent, throughput } from './format';
 import { RankedMeterList } from './RankedMeterList';
 import { Sparkline } from './Sparkline';
 import type { MetricPayload, StatusEnvelope, TemperatureMetrics, WeatherEnvelope } from './types';
@@ -298,7 +298,7 @@ function StandbyDashboard({
   weatherError: boolean;
 }) {
   const hasSeenAgent = envelope.status === 'offline' && envelope.ageSeconds != null;
-  const connectionValue = hasSeenAgent ? age(envelope.ageSeconds) : '--';
+  const connectionValue = hasSeenAgent ? coarseAge(envelope.ageSeconds) : '--';
   const connectionSub = hasSeenAgent ? 'Last seen' : 'No metrics received yet';
   const weatherCurrent = weather.current;
 

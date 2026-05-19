@@ -66,7 +66,7 @@ docker build -t sidecar-deck-backend -f backend/Dockerfile .
 docker run --rm -p 8080:8080 --env-file backend/.env.example sidecar-deck-backend
 ```
 
-Set `WEATHER_LOCATION` in the backend environment, such as `WEATHER_LOCATION=Tucson, AZ`, to enable standby weather.
+Set `WEATHER_LOCATION` in the backend environment, such as `WEATHER_LOCATION=Tucson, AZ` or `WEATHER_LOCATION=Springfield, Illinois`, to enable standby weather.
 
 Build and run the standalone frontend image:
 

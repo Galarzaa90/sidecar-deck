@@ -30,6 +30,16 @@ export function age(seconds?: number | null): string {
   return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
 }
 
+export function coarseAge(seconds?: number | null): string {
+  if (seconds == null) return '--';
+  if (seconds < 60) return '<1m';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m`;
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+  return remainingMinutes > 0 ? `${hours}h ${remainingMinutes}m` : `${hours}h`;
+}
+
 export function clock(date = new Date()): string {
   return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }

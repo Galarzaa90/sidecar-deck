@@ -34,7 +34,7 @@ WEATHER_LOCATION=City, Region
 ```
 
 `METRICS_TOKEN` must match the token used by the agent.
-`WEATHER_LOCATION` is optional. When set, the standby dashboard uses it to show current weather and a 5 day forecast.
+`WEATHER_LOCATION` is optional. When set, the standby dashboard uses it to show current weather and a 5 day forecast. City/region values such as `Springfield, Illinois` are supported.
 
 ## API
 

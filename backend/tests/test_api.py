@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 from app.config import Settings, get_settings
 from app.main import app
 from app.models import CurrentWeather, ForecastDay, WeatherEnvelope
+from app.weather import location_searches, select_geocode_result
 
 
 client = TestClient(app)
@@ -75,7 +76,11 @@ def test_post_rejects_invalid_payload() -> None:
 
 
 def test_weather_unconfigured() -> None:
-    response = client.get("/api/weather")
+    app.dependency_overrides[get_settings] = lambda: Settings(WEATHER_LOCATION="")
+    try:
+        response = client.get("/api/weather")
+    finally:
+        app.dependency_overrides.clear()
 
     assert response.status_code == 200
     body = response.json()
@@ -118,3 +123,19 @@ def test_weather_uses_configured_location(monkeypatch) -> None:
     assert body["locationLabel"] == "Tucson, Arizona, US"
     assert body["current"]["condition"] == "Clear"
     assert body["forecast"][0]["temperatureMaxC"] == 34.0
+
+
+def test_weather_location_searches_support_city_region_fallback() -> None:
+    assert ("Springfield", ["Illinois"]) in location_searches("Springfield, Illinois")
+    assert ("Springfield", ["Illinois"]) in location_searches("Springfield Illinois")
+
+
+def test_weather_geocode_selection_prefers_region_hint() -> None:
+    results = [
+        {"name": "Springfield", "admin1": "Missouri", "country_code": "US"},
+        {"name": "Springfield", "admin1": "Illinois", "country_code": "US"},
+    ]
+
+    result = select_geocode_result(results, ["Illinois"])
+
+    assert result == results[1]
