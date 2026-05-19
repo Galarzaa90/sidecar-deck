@@ -493,13 +493,13 @@ export default function App() {
                 <span className="network-rate">
                   <ArrowUp size={18} /> {throughput(latest?.network?.txBytesPerSecond)}
                 </span>
-                <Sparkline values={networkUpSeries} color="#d7dde7" max={8} />
+                <Sparkline values={networkUpSeries} color="#d7dde7" autoScale scaleFloor={0.1} />
               </div>
               <div className="network-meter">
                 <span className="network-rate">
                   <ArrowDown size={18} /> {throughput(latest?.network?.rxBytesPerSecond)}
                 </span>
-                <Sparkline values={networkDownSeries} color="#d7dde7" max={8} />
+                <Sparkline values={networkDownSeries} color="#d7dde7" autoScale scaleFloor={0.1} />
               </div>
             </div>
           </CompactCard>
