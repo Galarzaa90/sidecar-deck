@@ -54,7 +54,7 @@ export function Sparkline({ values, color, max = 100, autoScale = false, scaleFl
           strokeLinejoin="round"
         />
       ) : (
-        <line x1="0" x2={width} y1={height / 2} y2={height / 2} stroke={color} strokeDasharray="8 10" opacity="0.45" />
+        <line className="spark-empty-line" x1="0" x2={width} y1={height / 2} y2={height / 2} />
       )}
     </svg>
   );
