@@ -31,6 +31,7 @@ from agent_models import (
     MetricPayload,
     NetworkMetrics,
     PeripheralBatteryMetrics,
+    ProcessCpuMetrics,
     ProcessMemoryMetrics,
     TemperatureMetrics,
 )
@@ -73,6 +74,7 @@ _windows_device_battery_cache: list[PeripheralBatteryMetrics] = []
 _latest_payload_lock = threading.Lock()
 _latest_payload_json: dict[str, Any] | None = None
 IGNORED_TOP_MEMORY_PROCESS_NAMES = {"memcompression"}
+IGNORED_TOP_CPU_PROCESS_NAMES = {"idle", "system idle process"}
 
 
 def hidden_creation_flags() -> int:
@@ -83,6 +85,10 @@ def hidden_creation_flags() -> int:
 
 def should_ignore_top_memory_process(name: str) -> bool:
     return name.strip().lower() in IGNORED_TOP_MEMORY_PROCESS_NAMES
+
+
+def should_ignore_top_cpu_process(name: str) -> bool:
+    return name.strip().lower() in IGNORED_TOP_CPU_PROCESS_NAMES
 
 
 def display_process_name(name: str) -> str:
@@ -207,6 +213,8 @@ class RateTracker:
         self.last_net = psutil.net_io_counters()
         self.last_disk = psutil.disk_io_counters()
         self.last_time = time.monotonic()
+        self.last_process_cpu: dict[tuple[int, float], float] = {}
+        self.last_process_cpu_time = self.last_time
 
     def sample(self) -> tuple[NetworkMetrics, dict[str, int]]:
         now = time.monotonic()
@@ -230,6 +238,38 @@ class RateTracker:
         self.last_disk = disk
         self.last_time = now
         return network, disk_rates
+
+    def process_cpu_percentages(self) -> dict[tuple[int, float], float]:
+        now = time.monotonic()
+        elapsed = max(0.001, now - self.last_process_cpu_time)
+        cpu_count = max(1, psutil.cpu_count() or 1)
+        current: dict[tuple[int, float], float] = {}
+        percentages: dict[tuple[int, float], float] = {}
+
+        for process in psutil.process_iter(["pid", "cpu_times", "create_time"]):
+            try:
+                info = process.info
+                cpu_times = info.get("cpu_times")
+                if cpu_times is None:
+                    continue
+
+                key = (int(info["pid"]), float(info.get("create_time") or 0))
+                process_cpu_time = float(getattr(cpu_times, "user", 0)) + float(getattr(cpu_times, "system", 0))
+                current[key] = process_cpu_time
+
+                previous_cpu_time = self.last_process_cpu.get(key)
+                if previous_cpu_time is None:
+                    continue
+
+                usage_percent = ((process_cpu_time - previous_cpu_time) / elapsed / cpu_count) * 100
+                if usage_percent > 0:
+                    percentages[key] = min(100, max(0, usage_percent))
+            except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, TypeError, ValueError):
+                continue
+
+        self.last_process_cpu = current
+        self.last_process_cpu_time = now
+        return percentages
 
 
 def temperature_sensors() -> list[TemperatureMetrics]:
@@ -598,6 +638,50 @@ def top_memory_processes(total_memory: int, limit: int = 10) -> list[ProcessMemo
         for group in grouped.values()
     ]
     processes.sort(key=lambda item: item.rssBytes, reverse=True)
+    return processes[:limit]
+
+
+def top_cpu_processes(tracker: RateTracker, limit: int = 10) -> list[ProcessCpuMetrics]:
+    cpu_percentages = tracker.process_cpu_percentages()
+    if not cpu_percentages:
+        return []
+
+    grouped: dict[str, dict[str, Any]] = {}
+    for process in psutil.process_iter(["pid", "name", "create_time"]):
+        try:
+            info = process.info
+            key = (int(info["pid"]), float(info.get("create_time") or 0))
+            usage_percent = cpu_percentages.get(key)
+            if usage_percent is None or usage_percent <= 0:
+                continue
+
+            raw_name = str(info.get("name") or f"pid {info.get('pid')}")
+            name = display_process_name(raw_name)
+            if (
+                should_ignore_top_memory_process(raw_name)
+                or should_ignore_top_memory_process(name)
+                or should_ignore_top_cpu_process(raw_name)
+                or should_ignore_top_cpu_process(name)
+            ):
+                continue
+
+            group_key = name.casefold()
+            group = grouped.setdefault(group_key, {"name": name, "pids": [], "usagePercent": 0.0})
+            group["pids"].append(int(info["pid"]))
+            group["usagePercent"] += float(usage_percent)
+        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, TypeError, ValueError):
+            continue
+
+    processes = [
+        ProcessCpuMetrics(
+            name=str(group["name"]),
+            pids=sorted(group["pids"]),
+            processCount=len(group["pids"]),
+            usagePercent=round(min(100, float(group["usagePercent"])), 1),
+        )
+        for group in grouped.values()
+    ]
+    processes.sort(key=lambda item: item.usagePercent, reverse=True)
     return processes[:limit]
 
 
@@ -1123,6 +1207,7 @@ def collect_metrics(tracker: RateTracker) -> MetricPayload:
         usagePercent=psutil.cpu_percent(interval=None),
         clockMhz=cpu_clock,
         perCoreUsagePercent=psutil.cpu_percent(interval=None, percpu=True),
+        topProcesses=top_cpu_processes(tracker),
     )
     disk = disk_metrics.model_copy(update=disk_rates)
 
@@ -1170,6 +1255,9 @@ AREA_ALIASES = {
     "all": "all",
     "battery": "battery",
     "batteries": "battery",
+    "cpu": "cpu",
+    "cpus": "cpu",
+    "processor": "cpu",
     "thermal": "temperatures",
     "thermals": "temperatures",
     "temperature": "temperatures",
@@ -1259,6 +1347,22 @@ def debug_battery_sources() -> dict[str, Any]:
     }
 
 
+def collect_cpu_once() -> CpuMetrics:
+    tracker = RateTracker()
+    psutil.cpu_percent(interval=None)
+    psutil.cpu_percent(interval=None, percpu=True)
+    tracker.process_cpu_percentages()
+    time.sleep(max(0.1, min(2.0, PUSH_INTERVAL_SECONDS)))
+
+    return CpuMetrics(
+        name=cpu_name(),
+        usagePercent=psutil.cpu_percent(interval=None),
+        clockMhz=cpu_clock_mhz(),
+        perCoreUsagePercent=psutil.cpu_percent(interval=None, percpu=True),
+        topProcesses=top_cpu_processes(tracker),
+    )
+
+
 def one_shot_payload(area: str) -> Any:
     normalized_area = normalize_cli_area(area)
     if normalized_area == "all":
@@ -1266,6 +1370,8 @@ def one_shot_payload(area: str) -> Any:
         psutil.cpu_percent(interval=None)
         psutil.cpu_percent(interval=None, percpu=True)
         return collect_metrics(tracker).model_dump(mode="json", exclude_none=True)
+    if normalized_area == "cpu":
+        return {"cpu": collect_cpu_once().model_dump(mode="json", exclude_none=True)}
     if normalized_area == "battery":
         return {"peripheralBatteries": models_json(collect_batteries_once())}
     if normalized_area == "temperatures":

@@ -4,6 +4,16 @@ export interface CpuMetrics {
   temperatureC?: number | null;
   clockMhz?: number | null;
   perCoreUsagePercent?: number[] | null;
+  topProcesses?: ProcessCpuMetrics[] | null;
+}
+
+export interface ProcessCpuMetrics {
+  name: string;
+  /** @deprecated Use pids instead. */
+  pid?: number | null;
+  pids: number[];
+  processCount?: number | null;
+  usagePercent: number;
 }
 
 export interface MemoryMetrics {

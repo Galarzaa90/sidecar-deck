@@ -44,7 +44,11 @@ def test_post_accepts_valid_payload() -> None:
         json={
             "host": "pc",
             "timestamp": "2026-05-15T19:30:00Z",
-            "cpu": {"usagePercent": 42.5, "temperatureC": 61.2},
+            "cpu": {
+                "usagePercent": 42.5,
+                "temperatureC": 61.2,
+                "topProcesses": [{"name": "browser", "pids": [100, 101], "processCount": 2, "usagePercent": 12.5}],
+            },
             "memory": {
                 "usagePercent": 68.1,
                 "usedBytes": 1024,
@@ -59,6 +63,8 @@ def test_post_accepts_valid_payload() -> None:
     body = response.json()
     assert body["latest"]["host"] == "pc"
     assert body["latest"]["cpu"]["usagePercent"] == 42.5
+    assert body["latest"]["cpu"]["topProcesses"][0]["name"] == "browser"
+    assert body["latest"]["cpu"]["topProcesses"][0]["pids"] == [100, 101]
     assert body["latest"]["memory"]["topProcesses"][0]["name"] == "browser"
     assert body["latest"]["memory"]["topProcesses"][0]["pids"] == [100, 101]
     assert body["latest"]["memory"]["topProcesses"][0]["processCount"] == 2

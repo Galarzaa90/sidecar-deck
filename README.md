@@ -94,13 +94,18 @@ curl -X POST http://localhost:8080/api/metrics \
   -d '{
     "host": "gaming-pc",
     "timestamp": "2026-05-15T19:30:00Z",
-    "cpu": {"usagePercent": 42.5},
+    "cpu": {
+      "usagePercent": 42.5,
+      "topProcesses": [
+        {"name": "chrome.exe", "pids": [8424, 9012], "processCount": 2, "usagePercent": 12.4}
+      ]
+    },
     "memory": {
       "usagePercent": 68.1,
       "usedBytes": 21904333209,
       "totalBytes": 34359738368,
       "topProcesses": [
-        {"name": "chrome.exe", "pid": 8424, "rssBytes": 3161092096, "usagePercent": 9.2}
+        {"name": "chrome.exe", "pids": [8424, 9012], "processCount": 2, "rssBytes": 3161092096, "usagePercent": 9.2}
       ]
     },
     "gpu": {"name": "NVIDIA GeForce RTX 4070", "usagePercent": 76.4, "memoryUsedBytes": 8147483648, "memoryTotalBytes": 12884901888},

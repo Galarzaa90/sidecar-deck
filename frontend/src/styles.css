@@ -33,7 +33,7 @@ body {
   width: 100vw;
   height: 100vh;
   min-height: 480px;
-  padding: 10px;
+  padding: 6px;
   transition: filter 200ms ease;
 }
 
@@ -42,7 +42,7 @@ body {
   height: 100%;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .card {
@@ -50,7 +50,7 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 22px;
+  padding: 10px 18px 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   background:
@@ -148,7 +148,7 @@ body {
 .details {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 6px;
   align-content: flex-end;
   min-height: 94px;
   margin-top: auto;
@@ -168,11 +168,37 @@ body {
   white-space: nowrap;
 }
 
+.cpu-processes,
 .ram-processes,
 .ranked-meter-list {
   width: 100%;
   display: grid;
   gap: 7px;
+}
+
+.cpu-processes {
+  gap: 6px;
+  margin-top: 0;
+}
+
+.details:has(.cpu-processes) {
+  flex: 1 1 auto;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-content: stretch;
+  min-height: 0;
+}
+
+.details:has(.cpu-processes) .core-bars {
+  margin-block: auto;
+}
+
+.cpu-processes .ranked-meter-item {
+  min-height: 24px;
+}
+
+.cpu-processes .meter-main {
+  gap: 4px;
 }
 
 .paged-meter-list {
@@ -294,15 +320,28 @@ body {
   width: 100%;
   height: 34px;
   display: grid;
-  grid-template-columns: repeat(16, minmax(4px, 1fr));
-  gap: 5px;
+  grid-template-columns: repeat(auto-fit, 12px);
+  justify-content: space-between;
   align-items: end;
 }
 
 .core-bars i {
-  display: block;
-  min-height: 4px;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: end;
+  overflow: hidden;
   border-radius: 999px 999px 3px 3px;
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.core-bars i::before {
+  content: "";
+  display: block;
+  width: 100%;
+  height: var(--core-fill, 8%);
+  min-height: 4px;
+  border-radius: inherit;
   background: linear-gradient(180deg, var(--tone), rgba(255, 255, 255, 0.16));
 }
 
@@ -372,7 +411,7 @@ body {
   width: 100%;
   display: flex;
   flex-direction: column;
-  padding: 18px;
+  padding: 10px 14px 14px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   background:
@@ -387,7 +426,7 @@ body {
   height: 100%;
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 6px;
 }
 
 .standby-card {
@@ -395,7 +434,7 @@ body {
   min-height: 0;
   display: flex;
   flex-direction: column;
-  padding: 22px;
+  padding: 10px 18px 18px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 18px;
   background:

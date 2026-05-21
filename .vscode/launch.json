@@ -3,18 +3,10 @@
   "configurations": [
     {
       "name": "Backend: FastAPI",
-      "type": "python",
+      "type": "node-terminal",
       "request": "launch",
-      "module": "uvicorn",
-      "args": [
-        "app.main:app",
-        "--reload",
-        "--port",
-        "8080"
-      ],
-      "cwd": "${workspaceFolder}/backend",
-      "console": "integratedTerminal",
-      "justMyCode": true
+      "command": "& \"${workspaceFolder}\\backend\\.venv\\Scripts\\python.exe\" -m uvicorn app.main:app --reload --port 8080",
+      "cwd": "${workspaceFolder}/backend"
     },
     {
       "name": "Frontend: Vite",
@@ -25,15 +17,10 @@
     },
     {
       "name": "Agent: Collector",
-      "type": "python",
+      "type": "node-terminal",
       "request": "launch",
-      "program": "${workspaceFolder}/agent/pc_agent.py",
-      "cwd": "${workspaceFolder}/agent",
-      "console": "integratedTerminal",
-      "justMyCode": true,
-      "env": {
-        "DASHBOARD_BASE_URL": "http://localhost:8080"
-      }
+      "command": "$env:DASHBOARD_BASE_URL=\"http://localhost:8080\"; & \"${workspaceFolder}\\agent\\.venv\\Scripts\\python.exe\" pc_agent.py",
+      "cwd": "${workspaceFolder}/agent"
     }
   ],
   "compounds": [

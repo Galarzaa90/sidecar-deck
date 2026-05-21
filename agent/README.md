@@ -23,7 +23,9 @@ Useful CLI probes:
 
 ```sh
 sidecar-deck-agent one-shot
+sidecar-deck-agent one-shot cpu
 sidecar-deck-agent one-shot battery
+sidecar-deck-agent debug cpu
 sidecar-deck-agent debug battery
 python pc_agent.py debug battery
 ```

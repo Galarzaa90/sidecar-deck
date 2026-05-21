@@ -16,6 +16,7 @@ class CpuMetrics(AgentModel):
     temperatureC: float | None = None
     clockMhz: float | None = Field(default=None, ge=0)
     perCoreUsagePercent: list[float] | None = None
+    topProcesses: list["ProcessCpuMetrics"] | None = None
 
     @field_validator("perCoreUsagePercent")
     @classmethod
@@ -25,6 +26,22 @@ class CpuMetrics(AgentModel):
         for item in value:
             if item < 0 or item > 100:
                 raise ValueError("per-core CPU usage must be between 0 and 100")
+        return value
+
+
+class ProcessCpuMetrics(AgentModel):
+    name: str = Field(min_length=1, max_length=128)
+    pid: int | None = Field(default=None, ge=0, deprecated=True)
+    pids: list[int] = Field(min_length=1)
+    processCount: int = Field(default=1, ge=1)
+    usagePercent: float = Field(ge=0, le=100)
+
+    @field_validator("pids")
+    @classmethod
+    def validate_pids(cls, value: list[int]) -> list[int]:
+        for pid in value:
+            if pid < 0:
+                raise ValueError("process IDs must be greater than or equal to 0")
         return value
 
 

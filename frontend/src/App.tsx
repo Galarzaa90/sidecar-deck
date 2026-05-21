@@ -135,11 +135,6 @@ function processDisplayLabel(name: string, processCount?: number | null): ReactN
   );
 }
 
-function processShare(processBytes: number, topBytes: number): number {
-  if (!topBytes) return 0;
-  return Math.max(8, Math.min(100, (processBytes / topBytes) * 100));
-}
-
 function diskUsedShare(usedBytes?: number | null, freeBytes?: number | null, totalBytes?: number | null, usagePercent?: number | null): number {
   if (usedBytes != null && totalBytes) return (usedBytes / totalBytes) * 100;
   if (freeBytes != null && totalBytes) return 100 - (freeBytes / totalBytes) * 100;
@@ -626,8 +621,24 @@ export default function App() {
         >
           <div className="core-bars">
             {perCore.slice(0, 16).map((core, index) => (
-              <i key={index} style={{ height: `${Math.max(8, core)}%` }} />
+              <i key={index} style={{ '--core-fill': `${Math.max(8, core)}%` } as CSSProperties} />
             ))}
+          </div>
+          <div className="cpu-processes">
+            {(latest?.cpu?.topProcesses ?? []).length > 0 ? (
+              <RankedMeterList
+                items={latest?.cpu?.topProcesses?.slice(0, 3).map((process) => (
+                  {
+                    id: `${process.pids.join('-')}-${process.name}`,
+                    label: processDisplayLabel(process.name, process.processCount ?? process.pids?.length),
+                    value: percent(process.usagePercent),
+                    percent: process.usagePercent,
+                  }
+                )) ?? []}
+              />
+            ) : (
+              <span className="empty-detail">Top CPU unavailable</span>
+            )}
           </div>
         </StatCard>
 
@@ -642,15 +653,14 @@ export default function App() {
           <div className="ram-processes">
             {(latest?.memory?.topProcesses ?? []).length > 0 ? (
               <RankedMeterList
-                items={latest?.memory?.topProcesses?.slice(0, 5).map((process, _index, processes) => {
-                  const topBytes = processes[0]?.rssBytes ?? 0;
-                  return {
+                items={latest?.memory?.topProcesses?.slice(0, 5).map((process) => (
+                  {
                     id: `${process.pids.join('-')}-${process.name}`,
                     label: processDisplayLabel(process.name, process.processCount ?? process.pids?.length),
                     value: bytes(process.rssBytes),
-                    percent: processShare(process.rssBytes, topBytes),
-                  };
-                }) ?? []}
+                    percent: process.usagePercent ?? metricShare(process.rssBytes, latest?.memory?.totalBytes),
+                  }
+                )) ?? []}
               />
             ) : (
               <span className="empty-detail">Top processes unavailable</span>
