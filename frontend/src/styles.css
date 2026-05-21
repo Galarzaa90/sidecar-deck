@@ -347,10 +347,10 @@ body {
 
 .gpu-graphic {
   width: 100%;
-  height: 176px;
-  flex: 0 0 176px;
-  display: grid;
-  grid-template-rows: 54px auto 54px;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
   gap: 12px;
 }
 
@@ -359,8 +359,14 @@ body {
   flex-basis: 54px;
 }
 
+.gpu-graphic > .sparkline:first-child {
+  height: 104px;
+  flex-basis: 104px;
+}
+
 .gpu-vram-line {
   min-width: 0;
+  margin-top: auto;
   display: grid;
   gap: 5px;
 }
@@ -374,7 +380,7 @@ body {
 
 .gpu-vram-value {
   color: #fff;
-  font-size: 32px;
+  font-size: clamp(42px, 4.8vw, 58px);
   font-weight: 850;
   line-height: 1;
   font-variant-numeric: tabular-nums;
