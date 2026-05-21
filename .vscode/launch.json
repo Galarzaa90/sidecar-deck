@@ -1,0 +1,50 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Backend: FastAPI",
+      "type": "python",
+      "request": "launch",
+      "module": "uvicorn",
+      "args": [
+        "app.main:app",
+        "--reload",
+        "--port",
+        "8080"
+      ],
+      "cwd": "${workspaceFolder}/backend",
+      "console": "integratedTerminal",
+      "justMyCode": true
+    },
+    {
+      "name": "Frontend: Vite",
+      "type": "node-terminal",
+      "request": "launch",
+      "command": "npm run dev",
+      "cwd": "${workspaceFolder}/frontend"
+    },
+    {
+      "name": "Agent: Collector",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/agent/pc_agent.py",
+      "cwd": "${workspaceFolder}/agent",
+      "console": "integratedTerminal",
+      "justMyCode": true,
+      "env": {
+        "DASHBOARD_BASE_URL": "http://localhost:8080"
+      }
+    }
+  ],
+  "compounds": [
+    {
+      "name": "Sidecar Deck: All Components",
+      "configurations": [
+        "Backend: FastAPI",
+        "Frontend: Vite",
+        "Agent: Collector"
+      ],
+      "stopAll": true
+    }
+  ]
+}

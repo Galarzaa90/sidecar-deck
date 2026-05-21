@@ -447,8 +447,17 @@ body {
 .weather-current {
   min-width: 0;
   display: grid;
-  gap: 6px;
+  grid-template-columns: 58px minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 5px;
   margin-top: 18px;
+}
+
+.weather-current-icon {
+  grid-row: 1 / 3;
+  color: var(--tone);
 }
 
 .weather-temp {
@@ -480,7 +489,7 @@ body {
 .forecast-row {
   min-width: 0;
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr) auto;
+  grid-template-columns: 36px 18px minmax(0, 1fr) auto;
   align-items: baseline;
   gap: 8px;
   color: #dfe6f2;
@@ -489,11 +498,21 @@ body {
 }
 
 .forecast-row span,
-.forecast-row strong {
+.forecast-row strong,
+.forecast-row svg {
   min-width: 0;
+}
+
+.forecast-row span,
+.forecast-row strong {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.forecast-row svg {
+  align-self: center;
+  color: var(--tone);
 }
 
 .forecast-row span:first-child {

@@ -24,12 +24,19 @@ export function Sparkline({ values, color, max = 100, autoScale = false, scaleFl
   const clean = recent.map((value) => (typeof value === 'number' ? Math.max(0, Math.min(scaleMax, value)) : null));
   const width = 300;
   const height = 96;
+  const plotPadding = 5;
+  const plotHeight = height - plotPadding * 2;
   const step = clean.length > 1 ? width / (clean.length - 1) : width;
+  const gridY = {
+    max: plotPadding,
+    mid: height / 2,
+    min: height - plotPadding,
+  };
   const points = clean
     .map((value, index) => {
       if (value == null) return null;
       const x = index * step;
-      const y = height - (value / scaleMax) * (height - 10) - 5;
+      const y = height - (value / scaleMax) * plotHeight - plotPadding;
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .filter(Boolean)
@@ -43,7 +50,7 @@ export function Sparkline({ values, color, max = 100, autoScale = false, scaleFl
           <stop offset="100%" stopColor={color} stopOpacity="0.95" />
         </linearGradient>
       </defs>
-      <path className="spark-grid" d="M0 24 H300 M0 48 H300 M0 72 H300" />
+      <path className="spark-grid" d={`M0 ${gridY.max} H${width} M0 ${gridY.mid} H${width} M0 ${gridY.min} H${width}`} />
       {points ? (
         <polyline
           points={points}

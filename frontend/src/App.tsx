@@ -1,6 +1,7 @@
-import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, CalendarDays, CloudSun, Cpu, Gauge, HardDrive, MemoryStick, MonitorOff, Network, Thermometer, Wifi, WifiOff } from 'lucide-react';
+import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, CalendarDays, Cloud, CloudDrizzle, CloudFog, CloudHail, CloudLightning, CloudRain, CloudRainWind, CloudSnow, CloudSun, CloudSunRain, Cloudy, Cpu, Gauge, HardDrive, MemoryStick, MonitorOff, Network, Sun, Thermometer, Wifi, WifiOff } from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
+import type { LucideIcon } from 'lucide-react';
 import { age, bytes, clock, coarseAge, gbPair, number1, percent, throughput } from './format';
 import { RankedMeterList } from './RankedMeterList';
 import { Sparkline } from './Sparkline';
@@ -171,7 +172,54 @@ function forecastDayLabel(value: string): string {
 }
 
 function temperature(value?: number | null): string {
-  return value == null || Number.isNaN(value) ? '--' : `${Math.round(value)}C`;
+  return value == null || Number.isNaN(value) ? '--' : `${Math.round(value)}°C`;
+}
+
+function weatherIcon(code?: number | null): LucideIcon {
+  switch (code) {
+    case 0:
+      return Sun;
+    case 1:
+    case 2:
+      return CloudSun;
+    case 3:
+      return Cloudy;
+    case 45:
+    case 48:
+      return CloudFog;
+    case 51:
+    case 53:
+    case 55:
+      return CloudDrizzle;
+    case 56:
+    case 57:
+      return CloudHail;
+    case 61:
+    case 63:
+      return CloudRain;
+    case 65:
+      return CloudRainWind;
+    case 66:
+    case 67:
+      return CloudHail;
+    case 71:
+    case 73:
+    case 75:
+    case 77:
+    case 85:
+    case 86:
+      return CloudSnow;
+    case 80:
+    case 81:
+    case 82:
+      return CloudSunRain;
+    case 95:
+    case 96:
+    case 99:
+      return CloudLightning;
+    default:
+      return Cloud;
+  }
 }
 
 function visibleCompactPanels(panels: CompactPanel[], date: Date): CompactPanel[] {
@@ -306,6 +354,7 @@ function StandbyDashboard({
   const connectionValue = hasSeenAgent ? coarseAge(envelope.ageSeconds) : '--';
   const connectionSub = hasSeenAgent ? 'Last seen' : 'No metrics received yet';
   const weatherCurrent = weather.current;
+  const WeatherCurrentIcon = weatherIcon(weatherCurrent?.weatherCode);
 
   return (
     <div className="standby-shell">
@@ -350,17 +399,22 @@ function StandbyDashboard({
         {weather.status === 'ok' && weatherCurrent ? (
           <>
             <div className="weather-current">
+              <WeatherCurrentIcon className="weather-current-icon" size={50} strokeWidth={1.8} />
               <span className="weather-temp">{temperature(weatherCurrent.temperatureC)}</span>
               <span className="weather-condition">{weatherCurrent.condition}</span>
             </div>
             <div className="forecast-list">
-              {weather.forecast.slice(0, 5).map((day) => (
-                <div className="forecast-row" key={day.date}>
-                  <span>{forecastDayLabel(day.date)}</span>
-                  <span>{day.condition}</span>
-                  <strong>{temperature(day.temperatureMaxC)} / {temperature(day.temperatureMinC)}</strong>
-                </div>
-              ))}
+              {weather.forecast.slice(0, 5).map((day) => {
+                const ForecastIcon = weatherIcon(day.weatherCode);
+                return (
+                  <div className="forecast-row" key={day.date}>
+                    <span>{forecastDayLabel(day.date)}</span>
+                    <ForecastIcon size={17} strokeWidth={2.1} />
+                    <span>{day.condition}</span>
+                    <strong>{temperature(day.temperatureMaxC)} / {temperature(day.temperatureMinC)}</strong>
+                  </div>
+                );
+              })}
             </div>
           </>
         ) : (
