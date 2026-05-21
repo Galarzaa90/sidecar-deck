@@ -8,6 +8,7 @@ Python application focused on Windows that collects local metrics and pushes the
 - Temperatures via [LibreHardwareMonitor](https://github.com/LibreHardwaRemonitor/LibreHardwareMonitor)
 - Logitech G Hub devices battery levels
 - Bluetooth devices battery levels
+- Windows device and Phone Link battery levels
 - NVIDIA cards via `nvidia-smi`
 
 
@@ -16,6 +17,15 @@ Python application focused on Windows that collects local metrics and pushes the
 ```sh
 pip install -e .
 sidecar-deck-agent
+```
+
+Useful CLI probes:
+
+```sh
+sidecar-deck-agent one-shot
+sidecar-deck-agent one-shot battery
+sidecar-deck-agent debug battery
+python pc_agent.py debug battery
 ```
 
 ## Environment
