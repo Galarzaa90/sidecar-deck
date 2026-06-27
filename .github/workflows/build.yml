@@ -53,20 +53,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: backend/requirements-dev.txt
+          cache-dependency-path: |
+            backend/pyproject.toml
+            backend/requirements-dev.txt
 
       - name: Install dependencies
-        run: pip install -r requirements-dev.txt
+        run: pip install -e ".[dev]"
 
       - name: Test
         run: pytest
 
-  agent:
-    name: Agent
+  python-package:
+    name: Python package
     runs-on: ubuntu-latest
     defaults:
       run:
-        working-directory: agent
+        working-directory: backend
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -76,10 +78,26 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-          cache-dependency-path: agent/requirements.txt
+          cache-dependency-path: backend/pyproject.toml
 
-      - name: Install dependencies
-        run: pip install -r requirements.txt
+      - name: Install default server package
+        run: pip install -e .
 
-      - name: Compile
-        run: python -m py_compile pc_agent.py
+      - name: Check default install excludes agent dependencies
+        run: |
+          python - <<'PY'
+          import importlib.util
+          from app.main import app
+
+          assert app.title == "Sidecar Deck"
+          for package in ("psutil", "requests", "winrt"):
+              assert importlib.util.find_spec(package) is None, f"{package} should only be installed by the agent extra"
+          PY
+
+      - name: Install agent extra
+        run: pip install -e ".[agent]"
+
+      - name: Check agent entry point
+        run: |
+          python -m py_compile app/agent.py
+          sidecar-deck-agent --help
