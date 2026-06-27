@@ -5,7 +5,7 @@ Use this file to route future work to the right source quickly. The project is a
 ## Project Rules
 
 - When adding new files, add them to git unless they are ignored or temporary.
-- Keep the backend, frontend, and agent metric contracts aligned. The shared payload shape is duplicated in `backend/app/models.py`, `agent/agent_models.py`, and `frontend/src/types.ts`.
+- Keep the backend, frontend, and agent metric contracts aligned. The Python server and agent share `backend/app/models.py`; the frontend mirror lives in `frontend/src/types.ts`.
 - The backend does not generate fake metrics. Empty or missing data should show as waiting/unavailable in the frontend.
 
 ## Source Map
@@ -21,13 +21,17 @@ Use this file to route future work to the right source quickly. The project is a
 FastAPI service that validates incoming metrics, stores the latest payload plus short history, and streams updates to dashboard clients.
 
 - `backend/app/main.py`: API and WebSocket entry point. Owns FastAPI app setup, CORS, token-protected `POST /api/metrics`, read endpoints, `/ws`, `/health`, and static frontend fallback serving.
-- `backend/app/models.py`: canonical backend Pydantic API schema. Update this when the metric payload contract changes.
+- `backend/app/models.py`: canonical Python Pydantic API schema shared by the backend and agent. Update this when the metric payload contract changes.
+- `backend/app/agent.py`: optional Windows metrics agent. Owns environment loading, diagnostic HTTP server, rate tracking, psutil CPU/RAM/network/disk collection, temperature lookup, NVIDIA GPU lookup, peripheral battery lookup, payload assembly, and POSTing metrics.
 - `backend/app/state.py`: in-memory metrics store. Owns latest payload, history trimming, live/stale/offline status calculation, and WebSocket update waiting.
 - `backend/app/config.py`: environment-backed settings such as token, stale/offline thresholds, history window, app port, and static directory.
 - `backend/tests/test_api.py`: API smoke tests for health, content types, auth, schema acceptance, and validation rejection.
-- `backend/requirements.txt` and `backend/requirements-dev.txt`: runtime and test dependencies.
+- `backend/pyproject.toml`: installable Python package. The default install is the server; `backend[agent]` adds agent-only collector dependencies.
+- `backend/requirements.txt` and `backend/requirements-dev.txt`: runtime and test dependency files used by existing Docker/test workflows.
 - `backend/Dockerfile`: backend container image. It also serves the built frontend when static assets are present.
 - `backend/pytest.ini`: pytest configuration.
+- `backend/SidecarDeckAgent.ps1` and `backend/SidecarDeckAgent.bat`: Windows agent install/control scripts.
+- `backend/agent.env.example`: example agent environment values.
 
 Useful backend commands:
 
@@ -36,6 +40,8 @@ cd backend
 pip install -r requirements-dev.txt
 pytest
 uvicorn app.main:app --reload --port 8080
+pip install -e .
+sidecar-deck-server
 ```
 
 ### Frontend: `frontend/`
@@ -43,7 +49,7 @@ uvicorn app.main:app --reload --port 8080
 React/Vite dashboard optimized for the ultrawide kiosk. It connects to `/ws`, renders latest state and short history, and should remain readable at `1920x480`.
 
 - `frontend/src/App.tsx`: main dashboard composition and data flow. Owns WebSocket connection, derived display values, CPU/RAM/GPU cards, compact rotating panels, and missing-data fallbacks.
-- `frontend/src/types.ts`: TypeScript mirror of the backend/agent metric payload. Keep this synchronized with both Python model files.
+- `frontend/src/types.ts`: TypeScript mirror of the backend/agent metric payload. Keep this synchronized with `backend/app/models.py`.
 - `frontend/src/format.ts`: display formatting helpers for percentages, bytes, throughput, clock, age, and GB pairs.
 - `frontend/src/Sparkline.tsx`: reusable SVG sparkline for metric history.
 - `frontend/src/RankedMeterList.tsx`: reusable ranked/paged meter list for processes, thermals, disk volumes, and batteries.
@@ -65,19 +71,18 @@ npm run dev
 
 After frontend UI changes, run the app and visually check the kiosk viewport when practical.
 
-### Agent: `agent/`
+### Agent: `backend/app/agent.py`
 
 Windows-focused Python process that collects local machine metrics and pushes them to the backend with bearer-token auth.
 
-- `agent/pc_agent.py`: main collector and push loop. Owns environment loading, diagnostic HTTP server, rate tracking, psutil CPU/RAM/network/disk collection, temperature lookup, NVIDIA GPU lookup, peripheral battery lookup, payload assembly, and POSTing metrics.
-- `agent/agent_models.py`: agent-side Pydantic payload schema. Keep this synchronized with `backend/app/models.py` and `frontend/src/types.ts`.
-- `agent/SidecarDeckAgent.ps1`: Windows install/control script. Owns virtualenv setup, package install/update, `.env` writing, Scheduled Task registration, start/stop/restart/status/uninstall/run commands, and elevated-task option.
-- `agent/SidecarDeckAgent.bat`: Command Prompt wrapper around the PowerShell control script.
-- `agent/pyproject.toml`: package metadata and `sidecar-deck-agent` / `sidecar-deck-agentw` entry points.
-- `agent/requirements.txt`: agent runtime dependencies, including Windows-only WinRT packages for Bluetooth battery support.
-- `agent/README.md`: agent setup, diagnostics, temperature notes, and Windows control commands.
+- `backend/app/agent.py`: main collector and push loop.
+- `backend/app/models.py`: shared Pydantic payload schema for backend ingestion and agent emission.
+- `backend/SidecarDeckAgent.ps1`: Windows install/control script. Owns virtualenv setup, package install/update, `.env` writing, Scheduled Task registration, start/stop/restart/status/uninstall/run commands, and elevated-task option.
+- `backend/SidecarDeckAgent.bat`: Command Prompt wrapper around the PowerShell control script.
+- `backend/pyproject.toml`: package metadata and `sidecar-deck-agent` / `sidecar-deck-agentw` entry points.
+- `backend/agent.env.example`: agent environment example.
 
-Important collector areas inside `pc_agent.py`:
+Important collector areas inside `backend/app/agent.py`:
 
 - Environment/config constants live near the top of the file.
 - Diagnostic preview server is `DiagnosticHandler` and `start_diagnostic_http_server()`.
@@ -91,8 +96,8 @@ Important collector areas inside `pc_agent.py`:
 Useful agent commands:
 
 ```powershell
-cd agent
-pip install -e .
+cd backend
+pip install -e ".[agent]"
 sidecar-deck-agent
 ```
 
@@ -105,12 +110,12 @@ Operational setup notes rather than application source.
 
 ## Change Routing
 
-- API shape changes: update `backend/app/models.py`, `agent/agent_models.py`, `frontend/src/types.ts`, backend tests, and any README payload examples.
+- API shape changes: update `backend/app/models.py`, `frontend/src/types.ts`, backend tests, and any README payload examples.
 - Metric ingestion/status changes: start in `backend/app/main.py` and `backend/app/state.py`.
-- New collected metric: start in `agent/pc_agent.py`, add schema fields in all three contract files, then render in `frontend/src/App.tsx`.
+- New collected metric: start in `backend/app/agent.py`, add schema fields in `backend/app/models.py` and `frontend/src/types.ts`, then render in `frontend/src/App.tsx`.
 - Dashboard layout/visual changes: start in `frontend/src/App.tsx` and `frontend/src/styles.css`; use `Sparkline.tsx` and `RankedMeterList.tsx` for existing chart/list patterns.
 - Display formatting changes: start in `frontend/src/format.ts`.
-- Windows install/startup behavior: start in `agent/SidecarDeckAgent.ps1`, then update `agent/README.md` and `docs/windows-agent-startup.md`.
+- Windows install/startup behavior: start in `backend/SidecarDeckAgent.ps1`, then update `backend/README.md` and `docs/windows-agent-startup.md`.
 - Raspberry Pi kiosk behavior: update `docs/raspberry-pi-kiosk.md`.
 - Container/runtime changes: check `backend/Dockerfile`, `frontend/Dockerfile`, and `frontend/nginx/default.conf.template`.
 

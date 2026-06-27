@@ -1,0 +1,46 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sidecar-deck"
+version = "0.1.0"
+description = "Sidecar Deck metrics server and optional Windows metrics agent."
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi==0.115.6",
+    "httpx==0.28.1",
+    "uvicorn[standard]==0.34.0",
+    "pydantic-settings==2.7.1",
+]
+
+[project.optional-dependencies]
+agent = [
+    "psutil==6.1.1",
+    "requests==2.32.3",
+    "python-dotenv==1.0.1",
+    "websockets==16.0",
+    "click==8.3.1",
+    "winrt-windows-foundation==3.2.1; sys_platform == 'win32'",
+    "winrt-windows-foundation-collections==3.2.1; sys_platform == 'win32'",
+    "winrt-windows-devices-bluetooth-genericattributeprofile==3.2.1; sys_platform == 'win32'",
+    "winrt-windows-devices-enumeration==3.2.1; sys_platform == 'win32'",
+    "winrt-windows-storage-streams==3.2.1; sys_platform == 'win32'",
+]
+dev = [
+    "httpx==0.28.1",
+    "pytest==8.3.4",
+    "pytest-asyncio==0.25.2",
+]
+
+[project.scripts]
+sidecar-deck-server = "app.main:run_server"
+sidecar-deck-agent = "app.agent:main"
+
+[project.gui-scripts]
+sidecar-deck-agentw = "app.agent:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["app*"]

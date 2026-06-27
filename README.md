@@ -6,8 +6,7 @@ Lightweight kiosk dashboard for a `1920x480` ultrawide sidecar display. The home
 
 ## Project Layout
 
-- [agent](agent/README.md): Windows Python process that collects host metrics and posts them to the backend.
-- [backend](backend/README.md): FastAPI service that stores the latest metrics, keeps short history, and streams updates over WebSocket.
+- [backend](backend/README.md): Python package for the FastAPI metrics server and optional Windows metrics agent.
 - [frontend](frontend/README.md): React/Vite dashboard optimized for the sidecar display.
 - [docs](docs): setup notes for Raspberry Pi kiosk mode and Windows agent startup.
 
@@ -35,6 +34,14 @@ pip install -r requirements-dev.txt
 uvicorn app.main:app --reload --port 8080
 ```
 
+Or install the default server package:
+
+```bash
+cd backend
+pip install -e .
+sidecar-deck-server
+```
+
 Run the frontend:
 
 ```bash
@@ -49,7 +56,7 @@ Open the dashboard:
 http://localhost:5173
 ```
 
-For host metrics from a Windows machine, install the [agent](agent/README.md):
+For host metrics from a Windows machine, install the optional agent from the [backend package](backend/README.md):
 
 ```powershell
 .\SidecarDeckAgent.ps1 install -DashboardUrl http://homelab.local:8080 -MetricsToken change-me -Hostname gaming-pc

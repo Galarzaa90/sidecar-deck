@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Header, HTTPException, WebSocket, WebSocketDisconnect
@@ -86,3 +87,13 @@ async def serve_frontend(path: str) -> FileResponse:
     if index_path.exists():
         return FileResponse(index_path)
     raise HTTPException(status_code=404, detail="frontend has not been built")
+
+
+def run_server() -> None:
+    import uvicorn
+
+    uvicorn.run(
+        "app.main:app",
+        host=os.getenv("APP_HOST", "0.0.0.0"),
+        port=settings.app_port,
+    )

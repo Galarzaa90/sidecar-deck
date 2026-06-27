@@ -24,7 +24,7 @@ $AgentExe = Join-Path $VenvDir "Scripts\sidecar-deck-agent.exe"
 $AgentWindowlessExe = Join-Path $VenvDir "Scripts\sidecar-deck-agentw.exe"
 $EnvFile = Join-Path $BaseDir ".env"
 $SourceFile = Join-Path $BaseDir ".install-source"
-$DefaultSource = "git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=agent"
+$DefaultSource = "sidecar-deck[agent] @ git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=backend"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
 
 function Invoke-LoggedCommand {

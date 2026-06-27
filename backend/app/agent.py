@@ -16,13 +16,13 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 
+import click
 import psutil
 import requests
 import websockets
-import click
 from dotenv import load_dotenv
 
-from agent_models import (
+from .models import (
     CpuMetrics,
     DiskMetrics,
     DiskVolumeMetrics,

@@ -38,8 +38,8 @@ Create the directory where the agent should live, then copy `SidecarDeckAgent.ps
 
 ```powershell
 mkdir C:\SidecarDeckAgent
-copy .\agent\SidecarDeckAgent.ps1 C:\SidecarDeckAgent\
-copy .\agent\SidecarDeckAgent.bat C:\SidecarDeckAgent\
+copy .\backend\SidecarDeckAgent.ps1 C:\SidecarDeckAgent\
+copy .\backend\SidecarDeckAgent.bat C:\SidecarDeckAgent\
 cd C:\SidecarDeckAgent
 .\SidecarDeckAgent.ps1 install `
   -DashboardUrl http://homelab.local:8080 `
@@ -53,7 +53,7 @@ For a private repository, use a GitHub authentication method supported by your G
 
 ```powershell
 .\SidecarDeckAgent.ps1 install `
-  -Source "git+ssh://git@github.com/Galarzaa90/sidecar-deck#subdirectory=agent" `
+  -Source "sidecar-deck[agent] @ git+ssh://git@github.com/Galarzaa90/sidecar-deck#subdirectory=backend" `
   -DashboardUrl http://homelab.local:8080 `
   -MetricsToken change-me `
   -Hostname gaming-pc
@@ -65,7 +65,7 @@ To upgrade later:
 .\SidecarDeckAgent.ps1 update
 ```
 
-By default, the script installs from `git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=agent`. Use `-Source` to install from a different Git URL, wheel, or local package directory.
+By default, the script installs `sidecar-deck[agent]` from `git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=backend`. Use `-Source` to install from a different Git URL, wheel, or local package directory.
 
 To show the available commands and options:
 
