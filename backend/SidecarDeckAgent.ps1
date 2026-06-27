@@ -26,6 +26,11 @@ $EnvFile = Join-Path $BaseDir ".env"
 $SourceFile = Join-Path $BaseDir ".install-source"
 $DefaultSource = "sidecar-deck[agent] @ git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=backend"
 $Utf8NoBom = New-Object System.Text.UTF8Encoding $false
+$ExplicitDashboardUrl = $PSBoundParameters.ContainsKey("DashboardUrl")
+$ExplicitMetricsToken = $PSBoundParameters.ContainsKey("MetricsToken")
+$ExplicitInterval = $PSBoundParameters.ContainsKey("Interval")
+$ExplicitHostname = $PSBoundParameters.ContainsKey("Hostname")
+$ExplicitLogLevel = $PSBoundParameters.ContainsKey("LogLevel")
 
 function Invoke-LoggedCommand {
     param([Parameter(Mandatory = $true)][string[]]$Args)
@@ -78,17 +83,30 @@ function Resolve-InstallSource {
     param([string]$RequestedSource)
 
     if ($RequestedSource) {
-        return $RequestedSource
+        return Convert-LegacyInstallSource -InstallSource $RequestedSource
     }
 
     if (Test-Path $SourceFile) {
         $saved = (Get-Content $SourceFile -Raw).Trim()
         if ($saved) {
-            return $saved
+            return Convert-LegacyInstallSource -InstallSource $saved
         }
     }
 
     return $DefaultSource
+}
+
+function Convert-LegacyInstallSource {
+    param([Parameter(Mandatory = $true)][string]$InstallSource)
+
+    $source = $InstallSource.Trim()
+    if ($source -match "^(?:sidecar-deck-agent\s*@\s*)?(?<git>git\+.+)#subdirectory=agent$") {
+        $migratedSource = "sidecar-deck[agent] @ $($Matches.git)#subdirectory=backend"
+        Write-Host "Migrated legacy install source to $migratedSource"
+        return $migratedSource
+    }
+
+    return $source
 }
 
 function Install-Package {
@@ -110,16 +128,7 @@ function Install-Package {
 }
 
 function Write-AgentEnv {
-    $values = [ordered]@{
-        DASHBOARD_BASE_URL = $DashboardUrl
-        METRICS_TOKEN = $MetricsToken
-        PUSH_INTERVAL_SECONDS = $Interval
-        LOG_LEVEL = $LogLevel
-    }
-
-    if ($Hostname) {
-        $values.HOSTNAME = $Hostname
-    }
+    $values = [ordered]@{}
 
     if (Test-Path $EnvFile) {
         foreach ($line in Get-Content $EnvFile) {
@@ -128,10 +137,30 @@ function Write-AgentEnv {
             }
 
             $key, $value = $line.Split("=", 2)
-            if (-not $values.Contains($key.Trim())) {
-                $values[$key.Trim()] = $value.Trim()
-            }
+            $values[$key.Trim()] = $value.Trim()
         }
+    }
+
+    if ($ExplicitDashboardUrl -or -not $values.Contains("DASHBOARD_BASE_URL")) {
+        $values.DASHBOARD_BASE_URL = $DashboardUrl
+    }
+
+    if ($ExplicitMetricsToken -or -not $values.Contains("METRICS_TOKEN")) {
+        $values.METRICS_TOKEN = $MetricsToken
+    }
+
+    if ($ExplicitInterval -or -not $values.Contains("PUSH_INTERVAL_SECONDS")) {
+        $values.PUSH_INTERVAL_SECONDS = $Interval
+    }
+
+    if ($ExplicitLogLevel -or -not $values.Contains("LOG_LEVEL")) {
+        $values.LOG_LEVEL = $LogLevel
+    }
+
+    if ($ExplicitHostname) {
+        $values.HOSTNAME = $Hostname
+    } elseif ($Hostname -and -not $values.Contains("HOSTNAME")) {
+        $values.HOSTNAME = $Hostname
     }
 
     $content = foreach ($key in $values.Keys) {

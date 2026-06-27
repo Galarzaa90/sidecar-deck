@@ -85,7 +85,7 @@ pytest
 
 ## Agent
 
-The agent is focused on Windows and collects system metrics via psutil, temperatures via LibreHardwareMonitor/OpenHardwareMonitor, Logitech and Bluetooth device battery levels, Windows device and Phone Link battery levels, and NVIDIA GPU metrics through `nvidia-smi`.
+The agent is focused on Windows and collects system metrics via psutil, temperatures via LibreHardwareMonitor/OpenHardwareMonitor, Logitech and Bluetooth device battery levels, XInput controller battery levels, and NVIDIA GPU metrics through `nvidia-smi`.
 
 Useful CLI probes:
 

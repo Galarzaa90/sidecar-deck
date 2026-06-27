@@ -60,7 +60,6 @@ DIAGNOSTIC_HTTP_PORT = int(os.getenv("DIAGNOSTIC_HTTP_PORT", "8765"))
 LOGITECH_BATTERY_POLL_SECONDS = float(os.getenv("LOGITECH_BATTERY_POLL_SECONDS", "30"))
 BLUETOOTH_BATTERY_POLL_SECONDS = float(os.getenv("BLUETOOTH_BATTERY_POLL_SECONDS", "60"))
 XINPUT_BATTERY_POLL_SECONDS = float(os.getenv("XINPUT_BATTERY_POLL_SECONDS", "30"))
-WINDOWS_DEVICE_BATTERY_POLL_SECONDS = float(os.getenv("WINDOWS_DEVICE_BATTERY_POLL_SECONDS", "60"))
 _temperature_sensors_checked_at = 0.0
 _temperature_sensors_cache: list[TemperatureMetrics] = []
 _logitech_battery_checked_at = 0.0
@@ -69,8 +68,6 @@ _bluetooth_battery_checked_at = 0.0
 _bluetooth_battery_cache: list[PeripheralBatteryMetrics] = []
 _xinput_battery_checked_at = 0.0
 _xinput_battery_cache: list[PeripheralBatteryMetrics] = []
-_windows_device_battery_checked_at = 0.0
-_windows_device_battery_cache: list[PeripheralBatteryMetrics] = []
 _latest_payload_lock = threading.Lock()
 _latest_payload_json: dict[str, Any] | None = None
 IGNORED_TOP_MEMORY_PROCESS_NAMES = {"memcompression"}
@@ -774,31 +771,6 @@ def xinput_battery_devices() -> list[PeripheralBatteryMetrics]:
     return _xinput_battery_cache
 
 
-def windows_device_battery_devices() -> list[PeripheralBatteryMetrics]:
-    global _windows_device_battery_cache, _windows_device_battery_checked_at
-
-    if os.name != "nt":
-        return []
-
-    now = time.monotonic()
-    if now - _windows_device_battery_checked_at < WINDOWS_DEVICE_BATTERY_POLL_SECONDS:
-        return _windows_device_battery_cache
-    _windows_device_battery_checked_at = now
-
-    devices: list[PeripheralBatteryMetrics] = []
-    try:
-        devices.extend(fetch_windows_pnp_battery_devices())
-    except Exception as exc:
-        logger.debug("windows PnP battery lookup failed: %s", exc)
-    try:
-        devices.extend(fetch_phone_link_battery_devices())
-    except Exception as exc:
-        logger.debug("phone link battery lookup failed: %s", exc)
-
-    _windows_device_battery_cache = dedupe_peripheral_batteries(devices)
-    return _windows_device_battery_cache
-
-
 async def fetch_logitech_battery_devices() -> list[PeripheralBatteryMetrics]:
     headers = {
         "Origin": "file://",
@@ -899,196 +871,6 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
             )
 
     return list(devices.values())
-
-
-def fetch_windows_pnp_battery_devices() -> list[PeripheralBatteryMetrics]:
-    command = r"""
-$phonePattern = '\bphone\b|android|iphone|pixel|galaxy|samsung|oneplus|motorola|moto|xiaomi|huawei'
-$devices = foreach ($class in 'System','Bluetooth','MEDIA','HIDClass') {
-    Get-PnpDevice -Class $class -PresentOnly -ErrorAction SilentlyContinue | Where-Object { $_.FriendlyName -match $phonePattern }
-}
-$rows = foreach ($device in $devices) {
-    $category = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName 'DEVPKEY_DeviceContainer_Category' -ErrorAction SilentlyContinue
-    # Windows can keep paired BLE gamepads "present" with their last battery value long after they disconnect.
-    # Live controller batteries come from XInput or active Bluetooth GATT instead.
-    if ($category -and ($category.Data -join ',') -match 'Input\.Gaming\.Gamepad') { continue }
-
-    $battery = $null
-    foreach ($key in 'DEVPKEY_Device_BatteryLevel','DEVPKEY_Device_BatteryLife','{104EA319-6EE2-4701-BD47-8DDBF425BBE5} 2') {
-        $property = Get-PnpDeviceProperty -InstanceId $device.InstanceId -KeyName $key -ErrorAction SilentlyContinue
-        if ($property -and $null -ne $property.Data) {
-            $battery = $property.Data
-            break
-        }
-    }
-    if ($null -eq $battery) { continue }
-    [pscustomobject]@{
-        id = $device.InstanceId
-        name = $device.FriendlyName
-        batteryPercent = $battery
-    }
-}
-$rows | ConvertTo-Json -Compress
-"""
-    try:
-        result = subprocess.run(
-            ["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", command],
-            check=False,
-            capture_output=True,
-            creationflags=hidden_creation_flags(),
-            text=True,
-            timeout=20,
-        )
-    except (OSError, subprocess.TimeoutExpired) as exc:
-        logger.debug("windows PnP battery PowerShell lookup failed: %s", exc)
-        return []
-
-    if result.returncode != 0:
-        logger.debug("windows PnP battery PowerShell lookup failed: %s", result.stderr.strip() or result.stdout.strip())
-        return []
-
-    output = result.stdout.strip()
-    if not output:
-        return []
-
-    try:
-        data = json.loads(output)
-    except json.JSONDecodeError:
-        logger.debug("windows PnP battery PowerShell returned invalid JSON: %s", output)
-        return []
-
-    devices: list[PeripheralBatteryMetrics] = []
-    for index, item in enumerate(data if isinstance(data, list) else [data]):
-        if not isinstance(item, dict):
-            continue
-        battery_percent = coerce_percent(item.get("batteryPercent"))
-        if battery_percent is None:
-            continue
-        name = windows_device_battery_name(str(item.get("name") or "Windows device").strip())
-        device_id = str(item.get("id") or name or index).strip()
-        devices.append(
-            PeripheralBatteryMetrics(
-                id=f"windows-device-{stable_metric_id(device_id)}",
-                name=name[:96] or "Windows device",
-                batteryPercent=battery_percent,
-                charging=False,
-                source="windows-device",
-            )
-        )
-    return devices
-
-
-def windows_device_battery_name(name: str) -> str:
-    clean_name = re.sub(r"\s+(Hands-Free HF|Hands-Free HF Audio|Avrcp Transport|A2DP SNK)$", "", name, flags=re.IGNORECASE).strip()
-    return clean_name or name or "Windows device"
-
-
-def fetch_phone_link_battery_devices() -> list[PeripheralBatteryMetrics]:
-    local_app_data = os.getenv("LOCALAPPDATA")
-    if not local_app_data:
-        return []
-
-    packages_dir = os.path.join(local_app_data, "Packages")
-    if not os.path.isdir(packages_dir):
-        return []
-
-    devices: list[PeripheralBatteryMetrics] = []
-    for package_name in os.listdir(packages_dir):
-        if "yourphone" not in package_name.lower():
-            continue
-        devices.extend(phone_link_start_menu_batteries(os.path.join(packages_dir, package_name)))
-    return devices
-
-
-def phone_link_start_menu_batteries(package_dir: str) -> list[PeripheralBatteryMetrics]:
-    start_menu_dir = os.path.join(package_dir, "LocalState", "StartMenu")
-    if not os.path.isdir(start_menu_dir):
-        return []
-
-    devices: list[PeripheralBatteryMetrics] = []
-    for filename in os.listdir(start_menu_dir):
-        if not filename.lower().endswith(".json"):
-            continue
-
-        path = os.path.join(start_menu_dir, filename)
-        try:
-            with open(path, encoding="utf-8") as file:
-                raw = file.read()
-        except OSError:
-            continue
-
-        battery_percent = phone_link_battery_percent(raw)
-        if battery_percent is None:
-            continue
-
-        try:
-            data = json.loads(raw)
-        except json.JSONDecodeError:
-            data = {}
-
-        name = phone_link_device_name(data) or "Phone"
-        devices.append(
-            PeripheralBatteryMetrics(
-                id=f"phone-link-{stable_metric_id(name)}",
-                name=name[:96],
-                batteryPercent=battery_percent,
-                charging=phone_link_charging(raw),
-                source="phone-link",
-            )
-        )
-    return devices
-
-
-def phone_link_battery_percent(raw: str) -> int | None:
-    for pattern in (
-        r"battery[^0-9]{0,40}(\d{1,3})\s*%",
-        r"(\d{1,3})\s*%[^A-Za-z0-9]{0,40}battery",
-    ):
-        match = re.search(pattern, raw, flags=re.IGNORECASE)
-        if match:
-            return coerce_percent(match.group(1))
-    return None
-
-
-def phone_link_charging(raw: str) -> bool:
-    return bool(re.search(r"battery[^.]{0,80}(charging|plugged)", raw, flags=re.IGNORECASE))
-
-
-def phone_link_device_name(data: Any) -> str | None:
-    for text in phone_link_text_values(data):
-        clean_text = text.strip()
-        if clean_text and not re.search(r"battery|bluetooth|connected|disconnected|messages|calls|photos|notifications", clean_text, flags=re.IGNORECASE):
-            return clean_text
-    return None
-
-
-def phone_link_text_values(node: Any) -> list[str]:
-    values: list[str] = []
-    if isinstance(node, dict):
-        text = node.get("text")
-        if isinstance(text, str):
-            values.append(text)
-        for value in node.values():
-            values.extend(phone_link_text_values(value))
-    elif isinstance(node, list):
-        for item in node:
-            values.extend(phone_link_text_values(item))
-    return values
-
-
-def coerce_percent(value: Any) -> int | None:
-    try:
-        percent_value = round(float(value))
-    except (TypeError, ValueError):
-        return None
-    if not 0 <= percent_value <= 100:
-        return None
-    return int(percent_value)
-
-
-def stable_metric_id(value: str) -> str:
-    clean_value = re.sub(r"[^a-zA-Z0-9_.:-]+", "-", value.strip().lower()).strip("-")
-    return clean_value[:96] or "device"
 
 
 def fetch_xinput_battery_devices() -> list[PeripheralBatteryMetrics]:
@@ -1217,9 +999,7 @@ def collect_metrics(tracker: RateTracker) -> MetricPayload:
         if gpu_sensor is not None:
             thermal_sensors.append(gpu_sensor)
 
-    batteries = dedupe_peripheral_batteries(
-        xinput_battery_devices() + logitech_battery_devices() + bluetooth_battery_devices() + windows_device_battery_devices()
-    )
+    batteries = dedupe_peripheral_batteries(xinput_battery_devices() + logitech_battery_devices() + bluetooth_battery_devices())
     log_peripheral_batteries(batteries)
 
     return MetricPayload(
@@ -1316,9 +1096,7 @@ def models_json(items: list[Any]) -> list[dict[str, Any]]:
 
 
 def collect_batteries_once() -> list[PeripheralBatteryMetrics]:
-    return dedupe_peripheral_batteries(
-        xinput_battery_devices() + logitech_battery_devices() + bluetooth_battery_devices() + windows_device_battery_devices()
-    )
+    return dedupe_peripheral_batteries(xinput_battery_devices() + logitech_battery_devices() + bluetooth_battery_devices())
 
 
 def debug_battery_sources() -> dict[str, Any]:
@@ -1326,8 +1104,6 @@ def debug_battery_sources() -> dict[str, Any]:
         ("xinput", fetch_xinput_battery_devices),
         ("logitech", lambda: asyncio.run(fetch_logitech_battery_devices())),
         ("bluetooth", lambda: asyncio.run(fetch_bluetooth_battery_devices())),
-        ("windows-device", fetch_windows_pnp_battery_devices),
-        ("phone-link", fetch_phone_link_battery_devices),
     ]
     source_results: list[dict[str, Any]] = []
     combined: list[PeripheralBatteryMetrics] = []
