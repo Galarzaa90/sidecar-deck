@@ -67,6 +67,8 @@ To upgrade later:
 
 By default, the script installs `sidecar-deck[agent]` from `git+https://github.com/Galarzaa90/sidecar-deck#subdirectory=backend`. Use `-Source` to install from a different Git URL, wheel, or local package directory.
 
+If `C:\SidecarDeckAgent\.env` already exists, rerunning `.\SidecarDeckAgent.ps1 install` preserves it. To update a specific setting during install, pass that option again, such as `-DashboardUrl`, `-MetricsToken`, `-Interval`, `-Hostname`, or `-LogLevel`; only the supplied keys are changed.
+
 To show the available commands and options:
 
 ```powershell
@@ -75,7 +77,7 @@ To show the available commands and options:
 
 ## 3. Configure the Agent
 
-The install command writes these values to `C:\SidecarDeckAgent\.env`.
+The first install command writes these values to `C:\SidecarDeckAgent\.env`.
 
 ```env
 DASHBOARD_BASE_URL=http://homelab.local:8080

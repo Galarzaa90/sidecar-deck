@@ -128,44 +128,69 @@ function Install-Package {
 }
 
 function Write-AgentEnv {
-    $values = [ordered]@{}
+    $requestedValues = [ordered]@{}
 
     if (Test-Path $EnvFile) {
-        foreach ($line in Get-Content $EnvFile) {
-            if (-not $line.Trim() -or $line.Trim().StartsWith("#") -or -not $line.Contains("=")) {
-                continue
-            }
-
-            $key, $value = $line.Split("=", 2)
-            $values[$key.Trim()] = $value.Trim()
+        if (-not ($ExplicitDashboardUrl -or $ExplicitMetricsToken -or $ExplicitInterval -or $ExplicitHostname -or $ExplicitLogLevel)) {
+            Write-Host "Preserved existing configuration: $EnvFile"
+            return
         }
     }
 
-    if ($ExplicitDashboardUrl -or -not $values.Contains("DASHBOARD_BASE_URL")) {
-        $values.DASHBOARD_BASE_URL = $DashboardUrl
+    if ($ExplicitDashboardUrl -or -not (Test-Path $EnvFile)) {
+        $requestedValues.DASHBOARD_BASE_URL = $DashboardUrl
     }
 
-    if ($ExplicitMetricsToken -or -not $values.Contains("METRICS_TOKEN")) {
-        $values.METRICS_TOKEN = $MetricsToken
+    if ($ExplicitMetricsToken -or -not (Test-Path $EnvFile)) {
+        $requestedValues.METRICS_TOKEN = $MetricsToken
     }
 
-    if ($ExplicitInterval -or -not $values.Contains("PUSH_INTERVAL_SECONDS")) {
-        $values.PUSH_INTERVAL_SECONDS = $Interval
+    if ($ExplicitInterval -or -not (Test-Path $EnvFile)) {
+        $requestedValues.PUSH_INTERVAL_SECONDS = $Interval
     }
 
-    if ($ExplicitLogLevel -or -not $values.Contains("LOG_LEVEL")) {
-        $values.LOG_LEVEL = $LogLevel
+    if ($ExplicitLogLevel -or -not (Test-Path $EnvFile)) {
+        $requestedValues.LOG_LEVEL = $LogLevel
     }
 
     if ($ExplicitHostname) {
-        $values.HOSTNAME = $Hostname
-    } elseif ($Hostname -and -not $values.Contains("HOSTNAME")) {
-        $values.HOSTNAME = $Hostname
+        $requestedValues.HOSTNAME = $Hostname
+    } elseif ($Hostname -and -not (Test-Path $EnvFile)) {
+        $requestedValues.HOSTNAME = $Hostname
     }
 
-    $content = foreach ($key in $values.Keys) {
-        "$key=$($values[$key])"
+    if (-not (Test-Path $EnvFile)) {
+        $content = foreach ($key in $requestedValues.Keys) {
+            "$key=$($requestedValues[$key])"
+        }
+        Write-Utf8File -Path $EnvFile -Lines $content
+        return
     }
+
+    $seenKeys = New-Object "System.Collections.Generic.HashSet[string]" ([System.StringComparer]::OrdinalIgnoreCase)
+    $content = foreach ($line in Get-Content $EnvFile) {
+        if (-not $line.Trim() -or $line.Trim().StartsWith("#") -or -not $line.Contains("=")) {
+            $line
+            continue
+        }
+
+        $key, $value = $line.Split("=", 2)
+        $trimmedKey = $key.Trim()
+        [void]$seenKeys.Add($trimmedKey)
+
+        if ($requestedValues.Contains($trimmedKey)) {
+            "$trimmedKey=$($requestedValues[$trimmedKey])"
+        } else {
+            $line
+        }
+    }
+
+    foreach ($key in $requestedValues.Keys) {
+        if (-not $seenKeys.Contains($key)) {
+            $content += "$key=$($requestedValues[$key])"
+        }
+    }
+
     Write-Utf8File -Path $EnvFile -Lines $content
 }
 
@@ -225,7 +250,7 @@ Usage:
   SidecarDeckAgent.bat <command> [options]
 
 Commands:
-  install      Create .venv, install the package, write .env, register and start the task.
+  install      Create .venv, install the package, preserve or create .env, register and start the task.
   update       Reinstall the package from the saved or supplied source and recreate the task.
   start        Start the Scheduled Task.
   stop         Stop the Scheduled Task.
@@ -236,11 +261,11 @@ Commands:
   help         Show this help.
 
 Install options:
-  -DashboardUrl <url>     Backend URL. Default: http://homelab.local:8080
-  -MetricsToken <token>   Bearer token expected by the backend. Default: change-me
-  -Interval <seconds>     Metrics push interval. Default: 1
-  -Hostname <name>        Dashboard host label. Defaults to the machine hostname if omitted.
-  -LogLevel <level>       Agent log level. Default: INFO
+  -DashboardUrl <url>     Backend URL. Updates .env when supplied. Default for new .env: http://homelab.local:8080
+  -MetricsToken <token>   Bearer token expected by the backend. Updates .env when supplied. Default for new .env: change-me
+  -Interval <seconds>     Metrics push interval. Updates .env when supplied. Default for new .env: 1
+  -Hostname <name>        Dashboard host label. Updates .env when supplied. Defaults to the machine hostname if omitted.
+  -LogLevel <level>       Agent log level. Updates .env when supplied. Default for new .env: INFO
   -Source <source>        Git URL, wheel, or local package directory.
   -RunElevated            Register the task with highest privileges.
   -NoStart                Install or update without starting the task.

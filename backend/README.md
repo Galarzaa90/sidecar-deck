@@ -107,6 +107,7 @@ Install and start the background agent from a copied script directory:
 ```
 
 By default, the script installs `sidecar-deck[agent]` from the `backend` subdirectory of this repository. Use `-Source` to install from a different Git URL, wheel, or local package directory.
+When `.env` already exists, rerunning `install` preserves it unless you pass configuration options such as `-DashboardUrl` or `-MetricsToken`.
 
 The agent starts a local-only diagnostic HTTP server by default at `http://127.0.0.1:8765`.
 
