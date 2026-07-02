@@ -824,6 +824,11 @@ async def receive_logitech_message(websocket: Any, path: str) -> dict[str, Any]:
     raise TimeoutError(f"logitech websocket did not return {path}")
 
 
+def is_bluetooth_le_service_device_id(device_id: str) -> bool:
+    normalized_id = device_id.casefold()
+    return "bthledevice#" in normalized_id
+
+
 async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
     from uuid import UUID
 
@@ -839,6 +844,9 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
         device_id = str(device_info.id)
         if "0000180f" not in device_id.lower():
             continue
+        # Windows Settings "Other devices" phone/service entries use BTHENUM.
+        if not is_bluetooth_le_service_device_id(device_id):
+            continue
 
         service = await GattDeviceService.from_id_async(device_id)
         if service is None:
@@ -847,6 +855,7 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
             logger.debug("bluetooth battery skipped inactive session: name=%s status=%s", device_info.name, service.session.session_status)
             continue
 
+        device_name = str(device_info.name or "Bluetooth device")
         result = await service.get_characteristics_for_uuid_async(battery_level_uuid)
         for characteristic in result.characteristics:
             value_result = await characteristic.read_value_async()
@@ -864,7 +873,7 @@ async def fetch_bluetooth_battery_devices() -> list[PeripheralBatteryMetrics]:
             stable_id = address_match.group(1).lower() if address_match else address_candidates[-1] if address_candidates else device_id
             devices[stable_id] = PeripheralBatteryMetrics(
                 id=f"bluetooth-{stable_id}",
-                name=str(device_info.name or "Bluetooth device")[:96],
+                name=device_name[:96],
                 batteryPercent=max(0, min(100, battery_percent)),
                 charging=False,
                 source="bluetooth",
