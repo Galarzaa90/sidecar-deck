@@ -70,6 +70,7 @@ def test_post_accepts_valid_payload() -> None:
     assert body["latest"]["memory"]["topProcesses"][0]["processCount"] == 2
     assert body["latest"]["peripheralBatteries"][0]["batteryPercent"] == 45
     assert body["latest"]["peripheralBatteries"][0]["source"] == "logitech"
+    assert body["history"] == []
 
 
 def test_post_rejects_invalid_payload() -> None:

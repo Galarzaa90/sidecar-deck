@@ -33,9 +33,9 @@ class MetricsState:
                     await asyncio.wait_for(self._condition.wait(), timeout=timeout)
                 except TimeoutError:
                     pass
-            return self.snapshot()
+            return self.snapshot(include_history=False)
 
-    def snapshot(self) -> StatusEnvelope:
+    def snapshot(self, *, include_history: bool = True, history_limit: int | None = None) -> StatusEnvelope:
         now = datetime.now(timezone.utc)
         age = None
         if self.latest_received_at is not None:
@@ -50,6 +50,10 @@ class MetricsState:
             else:
                 status = "live"
 
+        history = list(self.history) if include_history else []
+        if history_limit is not None:
+            history = history[-history_limit:]
+
         return StatusEnvelope(
             status=status,
             serverTime=now,
@@ -57,7 +61,7 @@ class MetricsState:
             staleAfterSeconds=self.settings.metrics_stale_seconds,
             offlineAfterSeconds=self.settings.metrics_offline_seconds,
             latest=self.latest,
-            history=list(self.history),
+            history=history,
         )
 
     def _trim_history(self) -> None:

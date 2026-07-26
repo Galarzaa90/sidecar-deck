@@ -48,7 +48,24 @@ function useMetrics() {
     const connect = () => {
       socket = new WebSocket(wsUrl());
       socket.onopen = () => setConnected(true);
-      socket.onmessage = (event) => setEnvelope(JSON.parse(event.data));
+      socket.onmessage = (event) => {
+        const update = JSON.parse(event.data) as StatusEnvelope;
+        setEnvelope((previous) => {
+          // The first WebSocket message includes recent history. Subsequent
+          // messages intentionally carry only the latest sample.
+          if (update.history.length > 0 || !update.latest) return update;
+
+          const timestamp = update.latest.timestamp;
+          const history = timestamp
+            ? previous.history.filter((item) => item.timestamp !== timestamp)
+            : previous.history;
+
+          return {
+            ...update,
+            history: [...history, update.latest].slice(-120),
+          };
+        });
+      };
       socket.onclose = () => {
         setConnected(false);
         if (!stopped) retry = window.setTimeout(connect, 1500);

@@ -40,7 +40,7 @@ async def health() -> dict[str, str | bool]:
 
 @app.get("/api/metrics/latest", response_model=StatusEnvelope)
 async def latest_metrics() -> StatusEnvelope:
-    return state.snapshot()
+    return state.snapshot(include_history=False)
 
 
 @app.get("/api/metrics/history", response_model=list[MetricPayload])
@@ -56,13 +56,15 @@ async def weather(cfg: Settings = Depends(get_settings)) -> WeatherEnvelope:
 @app.post("/api/metrics", response_model=StatusEnvelope, dependencies=[Depends(require_token)])
 async def ingest_metrics(payload: MetricPayload) -> StatusEnvelope:
     await state.set_metrics(payload)
-    return state.snapshot()
+    return state.snapshot(include_history=False)
 
 
 @app.websocket("/ws")
 async def websocket_metrics(websocket: WebSocket) -> None:
     await websocket.accept()
-    last_seen = None
+    # Send enough points for the sparklines once, then stream only the newest sample.
+    await websocket.send_json(state.snapshot(history_limit=120).model_dump(mode="json"))
+    last_seen = state.latest_received_at
     try:
         while True:
             snapshot = await state.wait_for_update(last_seen)
