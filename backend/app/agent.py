@@ -12,6 +12,7 @@ import subprocess
 import threading
 import time
 from datetime import datetime, timezone
+from functools import lru_cache
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -48,7 +49,7 @@ logging.getLogger("asyncio").setLevel(logging.WARNING)
 DEFAULT_DASHBOARD_BASE_URL = "http://homelab.local:8080"
 DASHBOARD_BASE_URL = os.getenv("DASHBOARD_BASE_URL") or os.getenv("DASHBOARD_URL", DEFAULT_DASHBOARD_BASE_URL)
 METRICS_TOKEN = os.getenv("METRICS_TOKEN", "change-me")
-PUSH_INTERVAL_SECONDS = float(os.getenv("PUSH_INTERVAL_SECONDS", "1"))
+PUSH_INTERVAL_SECONDS = float(os.getenv("PUSH_INTERVAL_SECONDS", "2"))
 HOSTNAME = os.getenv("HOSTNAME") or socket.gethostname()
 REQUEST_TIMEOUT_SECONDS = float(os.getenv("REQUEST_TIMEOUT_SECONDS", "5"))
 CPU_TEMPERATURE_POLL_SECONDS = float(os.getenv("CPU_TEMPERATURE_POLL_SECONDS", "10"))
@@ -60,6 +61,7 @@ DIAGNOSTIC_HTTP_PORT = int(os.getenv("DIAGNOSTIC_HTTP_PORT", "8765"))
 LOGITECH_BATTERY_POLL_SECONDS = float(os.getenv("LOGITECH_BATTERY_POLL_SECONDS", "30"))
 BLUETOOTH_BATTERY_POLL_SECONDS = float(os.getenv("BLUETOOTH_BATTERY_POLL_SECONDS", "60"))
 XINPUT_BATTERY_POLL_SECONDS = float(os.getenv("XINPUT_BATTERY_POLL_SECONDS", "30"))
+TOP_PROCESS_POLL_SECONDS = float(os.getenv("TOP_PROCESS_POLL_SECONDS", "10"))
 _temperature_sensors_checked_at = 0.0
 _temperature_sensors_cache: list[TemperatureMetrics] = []
 _logitech_battery_checked_at = 0.0
@@ -212,6 +214,11 @@ class RateTracker:
         self.last_time = time.monotonic()
         self.last_process_cpu: dict[tuple[int, float], float] = {}
         self.last_process_cpu_time = self.last_time
+        self.last_process_snapshot_at = 0.0
+        self.process_cpu_baseline_ready = False
+        self.top_processes_warmed = False
+        self.cached_top_cpu_processes: list[ProcessCpuMetrics] = []
+        self.cached_top_memory_processes: list[ProcessMemoryMetrics] = []
 
     def sample(self) -> tuple[NetworkMetrics, dict[str, int]]:
         now = time.monotonic()
@@ -236,21 +243,38 @@ class RateTracker:
         self.last_time = now
         return network, disk_rates
 
-    def process_cpu_percentages(self) -> dict[tuple[int, float], float]:
+    def top_processes(self, total_memory: int, limit: int = 10) -> tuple[list[ProcessCpuMetrics], list[ProcessMemoryMetrics]]:
         now = time.monotonic()
+        if self.top_processes_warmed and now - self.last_process_snapshot_at < TOP_PROCESS_POLL_SECONDS:
+            return self.cached_top_cpu_processes, self.cached_top_memory_processes
+
         elapsed = max(0.001, now - self.last_process_cpu_time)
         cpu_count = max(1, psutil.cpu_count() or 1)
         current: dict[tuple[int, float], float] = {}
-        percentages: dict[tuple[int, float], float] = {}
+        cpu_grouped: dict[str, dict[str, Any]] = {}
+        memory_grouped: dict[str, dict[str, Any]] = {}
 
-        for process in psutil.process_iter(["pid", "cpu_times", "create_time"]):
+        for process in psutil.process_iter(["pid", "name", "cpu_times", "create_time", "memory_info"]):
             try:
                 info = process.info
+                pid = int(info["pid"])
+                create_time = float(info.get("create_time") or 0)
+                raw_name = str(info.get("name") or f"pid {pid}")
+                name = display_process_name(raw_name)
+                key = (pid, create_time)
+
+                memory_info = info.get("memory_info")
+                rss_bytes = int(getattr(memory_info, "rss", 0))
+                if rss_bytes > 0 and not (should_ignore_top_memory_process(raw_name) or should_ignore_top_memory_process(name)):
+                    memory_key = name.casefold()
+                    memory_group = memory_grouped.setdefault(memory_key, {"name": name, "pids": [], "rssBytes": 0})
+                    memory_group["pids"].append(pid)
+                    memory_group["rssBytes"] += rss_bytes
+
                 cpu_times = info.get("cpu_times")
                 if cpu_times is None:
                     continue
 
-                key = (int(info["pid"]), float(info.get("create_time") or 0))
                 process_cpu_time = float(getattr(cpu_times, "user", 0)) + float(getattr(cpu_times, "system", 0))
                 current[key] = process_cpu_time
 
@@ -259,14 +283,55 @@ class RateTracker:
                     continue
 
                 usage_percent = ((process_cpu_time - previous_cpu_time) / elapsed / cpu_count) * 100
-                if usage_percent > 0:
-                    percentages[key] = min(100, max(0, usage_percent))
+                if usage_percent <= 0 or (
+                    should_ignore_top_memory_process(raw_name)
+                    or should_ignore_top_memory_process(name)
+                    or should_ignore_top_cpu_process(raw_name)
+                    or should_ignore_top_cpu_process(name)
+                ):
+                    continue
+
+                cpu_key = name.casefold()
+                cpu_group = cpu_grouped.setdefault(cpu_key, {"name": name, "pids": [], "usagePercent": 0.0})
+                cpu_group["pids"].append(pid)
+                cpu_group["usagePercent"] += min(100, max(0, usage_percent))
             except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, TypeError, ValueError):
                 continue
 
         self.last_process_cpu = current
         self.last_process_cpu_time = now
-        return percentages
+        self.last_process_snapshot_at = now
+
+        memory_processes = [
+            ProcessMemoryMetrics(
+                name=str(group["name"]),
+                pids=sorted(group["pids"]),
+                processCount=len(group["pids"]),
+                rssBytes=int(group["rssBytes"]),
+                usagePercent=round((int(group["rssBytes"]) / total_memory) * 100, 1) if total_memory > 0 else None,
+            )
+            for group in memory_grouped.values()
+        ]
+        memory_processes.sort(key=lambda item: item.rssBytes, reverse=True)
+
+        cpu_processes = [
+            ProcessCpuMetrics(
+                name=str(group["name"]),
+                pids=sorted(group["pids"]),
+                processCount=len(group["pids"]),
+                usagePercent=round(min(100, float(group["usagePercent"])), 1),
+            )
+            for group in cpu_grouped.values()
+        ]
+        cpu_processes.sort(key=lambda item: item.usagePercent, reverse=True)
+
+        self.cached_top_cpu_processes = cpu_processes[:limit]
+        self.cached_top_memory_processes = memory_processes[:limit]
+        if self.process_cpu_baseline_ready:
+            self.top_processes_warmed = True
+        else:
+            self.process_cpu_baseline_ready = True
+        return self.cached_top_cpu_processes, self.cached_top_memory_processes
 
 
 def temperature_sensors() -> list[TemperatureMetrics]:
@@ -542,6 +607,7 @@ def cpu_clock_mhz() -> float | None:
     return float(frequency.current)
 
 
+@lru_cache(maxsize=1)
 def cpu_name() -> str | None:
     name = windows_cpu_name() if os.name == "nt" else None
     if not name:
@@ -600,86 +666,6 @@ def disk_usage_metrics() -> DiskMetrics:
         totalBytes=int(usage.total),
         volumes=volumes,
     )
-
-
-def top_memory_processes(total_memory: int, limit: int = 10) -> list[ProcessMemoryMetrics]:
-    grouped: dict[str, dict[str, Any]] = {}
-    for process in psutil.process_iter(["pid", "name", "memory_info"]):
-        try:
-            info = process.info
-            memory_info = info.get("memory_info")
-            rss_bytes = getattr(memory_info, "rss", 0)
-            if rss_bytes <= 0:
-                continue
-
-            raw_name = str(info.get("name") or f"pid {info.get('pid')}")
-            name = display_process_name(raw_name)
-            if should_ignore_top_memory_process(raw_name) or should_ignore_top_memory_process(name):
-                continue
-
-            key = name.casefold()
-            group = grouped.setdefault(key, {"name": name, "pids": [], "rssBytes": 0})
-            group["pids"].append(int(info["pid"]))
-            group["rssBytes"] += int(rss_bytes)
-        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess):
-            continue
-
-    processes = [
-        ProcessMemoryMetrics(
-            name=str(group["name"]),
-            pids=sorted(group["pids"]),
-            processCount=len(group["pids"]),
-            rssBytes=int(group["rssBytes"]),
-            usagePercent=round((int(group["rssBytes"]) / total_memory) * 100, 1) if total_memory > 0 else None,
-        )
-        for group in grouped.values()
-    ]
-    processes.sort(key=lambda item: item.rssBytes, reverse=True)
-    return processes[:limit]
-
-
-def top_cpu_processes(tracker: RateTracker, limit: int = 10) -> list[ProcessCpuMetrics]:
-    cpu_percentages = tracker.process_cpu_percentages()
-    if not cpu_percentages:
-        return []
-
-    grouped: dict[str, dict[str, Any]] = {}
-    for process in psutil.process_iter(["pid", "name", "create_time"]):
-        try:
-            info = process.info
-            key = (int(info["pid"]), float(info.get("create_time") or 0))
-            usage_percent = cpu_percentages.get(key)
-            if usage_percent is None or usage_percent <= 0:
-                continue
-
-            raw_name = str(info.get("name") or f"pid {info.get('pid')}")
-            name = display_process_name(raw_name)
-            if (
-                should_ignore_top_memory_process(raw_name)
-                or should_ignore_top_memory_process(name)
-                or should_ignore_top_cpu_process(raw_name)
-                or should_ignore_top_cpu_process(name)
-            ):
-                continue
-
-            group_key = name.casefold()
-            group = grouped.setdefault(group_key, {"name": name, "pids": [], "usagePercent": 0.0})
-            group["pids"].append(int(info["pid"]))
-            group["usagePercent"] += float(usage_percent)
-        except (psutil.AccessDenied, psutil.NoSuchProcess, psutil.ZombieProcess, TypeError, ValueError):
-            continue
-
-    processes = [
-        ProcessCpuMetrics(
-            name=str(group["name"]),
-            pids=sorted(group["pids"]),
-            processCount=len(group["pids"]),
-            usagePercent=round(min(100, float(group["usagePercent"])), 1),
-        )
-        for group in grouped.values()
-    ]
-    processes.sort(key=lambda item: item.usagePercent, reverse=True)
-    return processes[:limit]
 
 
 def nvidia_gpu_metrics() -> GpuMetrics | None:
@@ -992,13 +978,14 @@ def collect_metrics(tracker: RateTracker) -> MetricPayload:
     thermal_sensors = temperature_sensors()
     cpu_clock = cpu_clock_mhz()
     disk_metrics = disk_usage_metrics()
+    top_cpu_processes, top_memory_processes = tracker.top_processes(memory.total)
 
     cpu = CpuMetrics(
         name=cpu_name(),
         usagePercent=psutil.cpu_percent(interval=None),
         clockMhz=cpu_clock,
         perCoreUsagePercent=psutil.cpu_percent(interval=None, percpu=True),
-        topProcesses=top_cpu_processes(tracker),
+        topProcesses=top_cpu_processes,
     )
     disk = disk_metrics.model_copy(update=disk_rates)
 
@@ -1019,7 +1006,7 @@ def collect_metrics(tracker: RateTracker) -> MetricPayload:
             usagePercent=memory.percent,
             usedBytes=memory.used,
             totalBytes=memory.total,
-            topProcesses=top_memory_processes(memory.total),
+            topProcesses=top_memory_processes,
         ),
         network=network,
         disk=disk,
@@ -1136,7 +1123,7 @@ def collect_cpu_once() -> CpuMetrics:
     tracker = RateTracker()
     psutil.cpu_percent(interval=None)
     psutil.cpu_percent(interval=None, percpu=True)
-    tracker.process_cpu_percentages()
+    tracker.top_processes(psutil.virtual_memory().total)
     time.sleep(max(0.1, min(2.0, PUSH_INTERVAL_SECONDS)))
 
     return CpuMetrics(
@@ -1144,7 +1131,7 @@ def collect_cpu_once() -> CpuMetrics:
         usagePercent=psutil.cpu_percent(interval=None),
         clockMhz=cpu_clock_mhz(),
         perCoreUsagePercent=psutil.cpu_percent(interval=None, percpu=True),
-        topProcesses=top_cpu_processes(tracker),
+        topProcesses=tracker.top_processes(psutil.virtual_memory().total)[0],
     )
 
 

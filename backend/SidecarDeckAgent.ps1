@@ -6,7 +6,7 @@ param(
 
     [string]$DashboardUrl = "http://homelab.local:8080",
     [string]$MetricsToken = "change-me",
-    [string]$Interval = "1",
+    [string]$Interval = "2",
     [string]$Hostname,
     [string]$LogLevel = "INFO",
     [string]$Source,
@@ -263,7 +263,7 @@ Commands:
 Install options:
   -DashboardUrl <url>     Backend URL. Updates .env when supplied. Default for new .env: http://homelab.local:8080
   -MetricsToken <token>   Bearer token expected by the backend. Updates .env when supplied. Default for new .env: change-me
-  -Interval <seconds>     Metrics push interval. Updates .env when supplied. Default for new .env: 1
+  -Interval <seconds>     Metrics push interval. Updates .env when supplied. Default for new .env: 2
   -Hostname <name>        Dashboard host label. Updates .env when supplied. Defaults to the machine hostname if omitted.
   -LogLevel <level>       Agent log level. Updates .env when supplied. Default for new .env: INFO
   -Source <source>        Git URL, wheel, or local package directory.

@@ -82,7 +82,8 @@ The first install command writes these values to `C:\SidecarDeckAgent\.env`.
 ```env
 DASHBOARD_BASE_URL=http://homelab.local:8080
 METRICS_TOKEN=change-me
-PUSH_INTERVAL_SECONDS=1
+PUSH_INTERVAL_SECONDS=2
+TOP_PROCESS_POLL_SECONDS=10
 HOSTNAME=gaming-pc
 LOG_LEVEL=INFO
 LIBRE_HARDWARE_MONITOR_API_URL=
