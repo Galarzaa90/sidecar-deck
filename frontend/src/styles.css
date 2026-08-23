@@ -647,6 +647,71 @@ body {
   white-space: nowrap;
 }
 
+.compact-details:has(.thermal-gauge-list) {
+  width: 100%;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 6px;
+}
+
+.thermal-gauge-list {
+  width: 100%;
+  min-height: 0;
+  flex: 1 1 auto;
+  display: grid;
+  grid-template-rows: auto auto;
+  align-content: center;
+  gap: 3px;
+}
+
+.thermal-gauges {
+  min-height: 0;
+  height: 124px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.thermal-gauge {
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 12px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.025);
+}
+
+.thermal-gauge-value {
+  color: var(--thermal-value);
+  font-size: clamp(25px, 2vw, 33px);
+  font-weight: 850;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.04em;
+}
+
+.thermal-gauge-value small {
+  margin-left: 2px;
+  color: var(--thermal-value);
+  font-size: 0.45em;
+  letter-spacing: 0;
+}
+
+.thermal-gauge-label {
+  width: 100%;
+  margin-top: 8px;
+  color: #dfe6f2;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
 .network-meters {
   width: 100%;
   height: 100%;

@@ -2,9 +2,10 @@ import { Activity, ArrowDown, ArrowUp, BatteryCharging, BatteryFull, CalendarDay
 import { useEffect, useMemo, useState } from 'react';
 import type { CSSProperties, ReactNode } from 'react';
 import type { LucideIcon } from 'lucide-react';
-import { age, bytes, clock, coarseAge, gbPair, number1, percent, throughput } from './format';
+import { age, bytes, clock, coarseAge, gbPair, percent, throughput } from './format';
 import { RankedMeterList } from './RankedMeterList';
 import { Sparkline } from './Sparkline';
+import { ThermalGaugeList } from './ThermalGaugeList';
 import type { MetricPayload, StatusEnvelope, TemperatureMetrics, WeatherEnvelope } from './types';
 
 interface CompactPanel {
@@ -499,20 +500,7 @@ export default function App() {
             sub={maxTemp(latest) != null && maxTemp(latest)! >= 82 ? 'High Temperature' : 'Thermal Headroom'}
           >
             {thermals.length > 0 ? (
-              <>
-                <RankedMeterList
-                  items={thermalList.map((sensor) => ({
-                    id: sensor.id,
-                    label: sensor.label,
-                    value: number1(sensor.temperatureC, 'C'),
-                    percent: sensor.temperatureC,
-                  }))}
-                  pageDate={now}
-                  pageLabel="Temperature"
-                  pageSize={3}
-                  showRank={false}
-                />
-              </>
+              <ThermalGaugeList items={thermalList} pageDate={now} />
             ) : (
               <span className="empty-detail">Temperature sensors unavailable</span>
             )}
