@@ -122,8 +122,23 @@ function Install-Package {
     if ($ForceReinstall) {
         $pipArgs += "--force-reinstall"
     }
-    $pipArgs += $InstallSource
-    Invoke-LoggedCommand -Args $pipArgs
+
+    if (Test-Path -LiteralPath $InstallSource -PathType Container) {
+        # A bare local project path does not request its optional dependencies.
+        # Install from the project directory with the agent extra enabled.
+        try {
+            Push-Location -LiteralPath $InstallSource
+            $pipArgs += ".[agent]"
+            Invoke-LoggedCommand -Args $pipArgs
+        }
+        finally {
+            Pop-Location
+        }
+    }
+    else {
+        $pipArgs += $InstallSource
+        Invoke-LoggedCommand -Args $pipArgs
+    }
     Write-Utf8File -Path $SourceFile -Lines @($InstallSource)
 }
 
